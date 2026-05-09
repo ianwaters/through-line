@@ -56,31 +56,14 @@ private struct EventDetailRepresentable: UIViewControllerRepresentable {
         vc.allowsEditing = false
         vc.allowsCalendarPreview = true
         vc.delegate = context.coordinator
-        configureDoneButton(on: vc, with: context.coordinator)
         return UINavigationController(rootViewController: vc)
     }
 
-    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {
-        if let vc = uiViewController.viewControllers.first as? EKEventViewController {
-            configureDoneButton(on: vc, with: context.coordinator)
-        }
-    }
-
-    private func configureDoneButton(on vc: EKEventViewController, with coordinator: Coordinator) {
-        // Leading position avoids EKEventViewController's own trailing items
-        // (Edit / Share) overwriting ours when it lays itself out.
-        let item = UIBarButtonItem(
-            systemItem: .done,
-            primaryAction: UIAction { _ in coordinator.dismiss() }
-        )
-        vc.navigationItem.leftBarButtonItem = item
-    }
+    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
 
     final class Coordinator: NSObject, EKEventViewDelegate {
         let onDone: () -> Void
         init(onDone: @escaping () -> Void) { self.onDone = onDone }
-
-        func dismiss() { onDone() }
 
         func eventViewController(_ controller: EKEventViewController, didCompleteWith action: EKEventViewAction) {
             onDone()
