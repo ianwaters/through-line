@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var sidebarSelection: SidebarSelection? = .home
     @State private var tab: AppTab = .notes
     @State private var noteSelection: UUID?
+    @State private var searchText: String = ""
     @State private var unlockSession = UnlockSession()
     @State private var showingQuickCapture: Bool = false
     @State private var showingSettingsSheet: Bool = false
@@ -18,18 +19,36 @@ struct ContentView: View {
     @Environment(\.openSettings) private var openSettings
     #endif
 
+    private var isHome: Bool { sidebarSelection == .home }
+
     var body: some View {
         NavigationSplitView {
             SidebarView(selection: $sidebarSelection, tab: $tab)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 240)
         } content: {
-            NoteListView(
-                sidebarSelection: sidebarSelection,
-                tab: tab,
-                noteSelection: $noteSelection
+            Group {
+                if isHome {
+                    Color.clear
+                } else {
+                    NoteListView(
+                        sidebarSelection: sidebarSelection,
+                        tab: tab,
+                        noteSelection: $noteSelection,
+                        searchText: $searchText
+                    )
+                }
+            }
+            .navigationSplitViewColumnWidth(
+                min: isHome ? 0 : 220,
+                ideal: isHome ? 0 : 280,
+                max: isHome ? 0 : 480
             )
         } detail: {
-            if sidebarSelection == .home {
-                HomeScreenView()
+            if isHome {
+                HomeScreenView { id in
+                    sidebarSelection = .allNotes
+                    noteSelection = id
+                }
             } else {
                 NoteEditorView(noteID: noteSelection)
             }
@@ -68,7 +87,12 @@ struct ContentView: View {
                     }
             }
         }
-        .onChange(of: sidebarSelection) { _, _ in
+        .onChange(of: sidebarSelection) { oldValue, _ in
+            // Skip the auto-clear when navigating away from Home — that path
+            // is the jump-from-Recent flow which has just set noteSelection
+            // to the note the user wants to view. Without this guard, the
+            // race would clear it back to nil.
+            if oldValue == .home { return }
             noteSelection = nil
         }
         .onChange(of: tab) { _, _ in

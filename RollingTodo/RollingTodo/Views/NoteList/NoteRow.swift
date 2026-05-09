@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NoteRow: View {
     let note: Note
+    var isSelected: Bool = false
 
     private var calendar: Calendar { .current }
 
@@ -27,9 +28,7 @@ struct NoteRow: View {
         return calendar.isDateInToday(due)
     }
 
-    private var isUrgent: Bool {
-        note.priority == .urgent
-    }
+    private var isUrgent: Bool { note.priority == .urgent }
 
     private var bodyPreview: String {
         let firstLine = note.bodyMarkdown
@@ -45,40 +44,80 @@ struct NoteRow: View {
             .replacingOccurrences(of: "`", with: "")
     }
 
+    // MARK: - Selection-aware colours
+
+    private var titleColor: Color {
+        isSelected ? .white : .ink
+    }
+
+    private var subtleColor: Color {
+        isSelected ? .white.opacity(0.85) : .inkMuted
+    }
+
+    private var statusColor: Color {
+        isSelected ? .white : note.status.tint
+    }
+
+    private var dangerColor: Color {
+        isSelected ? .white : .editorialRed
+    }
+
+    private var warningColor: Color {
+        isSelected ? .white : .editorialAmber
+    }
+
+    private var pinLockColor: Color {
+        isSelected ? .white : .accentColor
+    }
+
+    private var labelBarColor: Color {
+        // Brighten the label colour ribbon when selected so it stays visible
+        guard let swatch = note.labelColor.swatch else { return .clear }
+        return isSelected ? .white : swatch
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            Rectangle()
-                .fill(note.labelColor.swatch ?? Color.clear)
-                .frame(width: 3)
-                .clipShape(.rect(cornerRadius: 1.5))
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(labelBarColor)
+                .frame(width: 2)
+                .frame(maxHeight: 32)
                 .opacity(note.labelColor == .none ? 0 : 1)
 
+            // Always reserve the status-icon slot so titles align across rows
             if note.todoEnabled {
                 Image(systemName: note.status.sfSymbol)
-                    .foregroundStyle(note.status.tint)
-                    .font(.body)
-                    .frame(width: 18)
+                    .foregroundStyle(statusColor)
+                    .font(.system(size: 15, weight: .regular))
+                    .frame(width: 18, height: 18)
+            } else {
+                Color.clear.frame(width: 18, height: 18)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     if note.isLocked {
                         Image(systemName: "lock.fill")
-                            .foregroundStyle(.tint)
-                            .font(.caption)
+                            .foregroundStyle(pinLockColor)
+                            .font(.system(size: 10))
                     } else if note.isPinned {
                         Image(systemName: "pin.fill")
-                            .foregroundStyle(.tint)
-                            .font(.caption)
+                            .foregroundStyle(pinLockColor)
+                            .font(.system(size: 10))
                             .rotationEffect(.degrees(45))
                     }
+
                     Text(note.title.isEmpty ? "Untitled" : note.title)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(titleColor)
                         .lineLimit(1)
+
                     Spacer(minLength: 4)
+
                     if isUrgent && !note.isLocked {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                            .font(.caption)
+                            .foregroundStyle(dangerColor)
+                            .font(.system(size: 10))
                     }
                 }
 
@@ -87,23 +126,25 @@ struct NoteRow: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
     private var subline: some View {
         if isOverdue {
             Text(daysOverdue == 1 ? "1 day overdue" : "\(daysOverdue) days overdue")
-                .font(.caption)
-                .foregroundStyle(.red)
+                .font(.system(size: 11, weight: .semibold).smallCaps())
+                .tracking(0.5)
+                .foregroundStyle(dangerColor)
         } else if isDueToday {
             Text("Due today")
-                .font(.caption)
-                .foregroundStyle(.orange)
+                .font(.system(size: 11, weight: .semibold).smallCaps())
+                .tracking(0.5)
+                .foregroundStyle(warningColor)
         } else if !bodyPreview.isEmpty {
             Text(bodyPreview)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.editorialItalic(12))
+                .foregroundStyle(subtleColor)
                 .lineLimit(1)
         }
     }

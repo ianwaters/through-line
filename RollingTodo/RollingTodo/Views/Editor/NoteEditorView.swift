@@ -25,10 +25,11 @@ struct NoteEditorView: View {
                     .id(note.id)
             }
         } else {
-            ContentUnavailableView(
-                "No Note Selected",
-                systemImage: "note",
-                description: Text("Pick a note from the list, or create a new one with ⌘N.")
+            EditorialEmpty(
+                eyebrow: "Editor",
+                title: "Choose a note",
+                detail: "Pick something from the list, or press ⌘N to start fresh.",
+                symbol: "doc.text"
             )
         }
     }
@@ -40,19 +41,45 @@ private struct LockedNoteView: View {
     @State private var attempting: Bool = false
 
     var body: some View {
-        ContentUnavailableView {
-            Label(note.title.isEmpty ? "Locked Note" : note.title, systemImage: "lock.fill")
-        } description: {
-            Text("This note is locked. Unlock with biometrics or your device passcode.")
-        } actions: {
+        VStack(spacing: 18) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(Color.accentColor.opacity(0.7))
+                .frame(width: 64, height: 64)
+                .background(
+                    Circle()
+                        .strokeBorder(Color.accentColor.opacity(0.2), lineWidth: 0.5)
+                )
+                .padding(.bottom, 6)
+
+            VStack(spacing: 8) {
+                Text("Sealed")
+                    .eyebrowStyle()
+                Text(note.title.isEmpty ? "Locked Note" : note.title)
+                    .font(.editorialDisplay(26, weight: .semibold))
+                    .foregroundStyle(Color.ink)
+                    .multilineTextAlignment(.center)
+                Text("Unlock with biometrics or your device passcode.")
+                    .font(.editorialItalic(14))
+                    .foregroundStyle(Color.inkSoft)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+            }
+
             Button {
                 Task { await unlock() }
             } label: {
                 Label(attempting ? "Unlocking…" : "Unlock", systemImage: "lock.open")
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
             }
             .buttonStyle(.borderedProminent)
             .disabled(attempting)
+            .padding(.top, 6)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(40)
         .onAppear {
             Task { await unlock() }
         }
@@ -72,7 +99,7 @@ private struct NoteEditorContent: View {
     @Environment(\.modelContext) private var context
 
     @State private var mode: EditorMode = .edit
-    @State private var showInspector: Bool = false
+    @AppStorage("inspectorVisible") private var showInspector: Bool = false
     @State private var saveTask: Task<Void, Never>?
     @State private var savedAt: Date?
     @State private var ticker: Date = .now
@@ -98,53 +125,72 @@ private struct NoteEditorContent: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TextField("Title", text: $note.title)
-                .font(.largeTitle.bold())
-                .textFieldStyle(.plain)
-                .padding(.horizontal)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(note.modifiedDate.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                    .eyebrowStyle(tint: Color.inkMuted)
 
-            Divider()
+                TextField("Untitled", text: $note.title)
+                    .font(.editorialDisplay(34, weight: .semibold))
+                    .foregroundStyle(Color.ink)
+                    .textFieldStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 32)
+            .padding(.top, 28)
+            .padding(.bottom, 18)
+
+            Rectangle()
+                .fill(Color.inkHairline)
+                .frame(height: 0.5)
 
             if note.todoEnabled {
                 TodoListSection(note: note)
-                Divider()
+                Rectangle()
+                    .fill(Color.inkHairline)
+                    .frame(height: 0.5)
             }
 
             switch mode {
             case .edit:
                 TextEditor(text: $note.bodyMarkdown)
-                    .font(.body)
+                    .font(.system(size: 15, design: .serif))
+                    .lineSpacing(4)
                     .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
             case .preview:
                 ScrollView {
                     MarkdownView(text: note.bodyMarkdown)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 20)
                 }
             case .split:
                 HStack(spacing: 0) {
                     TextEditor(text: $note.bodyMarkdown)
-                        .font(.body)
+                        .font(.system(size: 15, design: .serif))
+                        .lineSpacing(4)
                         .scrollContentBackground(.hidden)
-                        .padding(.horizontal, 12)
-                    Divider()
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                    Rectangle()
+                        .fill(Color.inkHairline)
+                        .frame(width: 0.5)
                     ScrollView {
                         MarkdownView(text: note.bodyMarkdown)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
+                            .padding(20)
                     }
                 }
             }
         }
         .toolbar {
-            ToolbarItemGroup {
+            ToolbarItem(placement: .navigation) {
                 if let savedAt {
                     SavedIndicator(savedAt: savedAt, now: ticker)
                 }
-
+            }
+            ToolbarItemGroup {
                 Picker("Mode", selection: $mode) {
                     ForEach(EditorMode.allCases) { m in
                         Image(systemName: m.sfSymbol).tag(m)

@@ -2,6 +2,8 @@ import SwiftUI
 import SwiftData
 
 struct HomeScreenView: View {
+    var onOpenNote: ((UUID) -> Void)? = nil
+
     @Environment(\.modelContext) private var context
     @Query(filter: #Predicate<Note> { $0.archivedDate == nil }) private var activeNotes: [Note]
     @Query private var homepageNotes: [HomepageNote]
@@ -56,32 +58,44 @@ struct HomeScreenView: View {
 
     private var updateMessage: String {
         if urgent.count > 0 {
-            return urgent.count == 1 ? "You have 1 urgent item." : "You have \(urgent.count) urgent items."
+            return urgent.count == 1 ? "One urgent item asks for your attention." : "\(urgent.count) urgent items ask for your attention."
         }
         if dueToday.count > 0 {
-            return dueToday.count == 1 ? "You have 1 item due today." : "You have \(dueToday.count) items due today."
+            return dueToday.count == 1 ? "One thing due today." : "\(dueToday.count) things due today."
         }
         if overdue.count > 0 {
-            return overdue.count == 1 ? "You have 1 overdue item." : "You have \(overdue.count) overdue items."
+            return overdue.count == 1 ? "One overdue item lingers." : "\(overdue.count) overdue items linger."
         }
-        return "You have no urgent items."
+        return "Nothing urgent. A clear morning."
+    }
+
+    /// The notes that the update message refers to — surfaced as chips below the headline.
+    private var updateNotes: [Note] {
+        if !urgent.isEmpty { return urgent }
+        if !dueToday.isEmpty { return dueToday }
+        if !overdue.isEmpty { return overdue }
+        return []
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 0) {
                 hero
-                updateCard
+                    .padding(.bottom, 56)
+
                 quickActions
+                    .padding(.bottom, showHomepageNote && !homepageNotes.isEmpty ? 56 : 24)
+
                 if showHomepageNote {
                     homepageSection
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 720, alignment: .leading)
+            .padding(.horizontal, 64)
+            .padding(.vertical, 72)
+            .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
-        .navigationTitle("Home")
+        .navigationTitle("")
         .confirmationDialog(
             "Delete \(cancelled.count) cancelled note\(cancelled.count == 1 ? "" : "s")?",
             isPresented: $confirmingDeleteCancelled,
@@ -95,71 +109,117 @@ struct HomeScreenView: View {
         .onAppear(perform: ensureHomepageNote)
     }
 
+    // MARK: - Hero
+
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                .eyebrowStyle()
+                .padding(.bottom, 14)
+
             Text(greeting)
-                .font(.largeTitle.bold())
-            Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide).year()))
-                .font(.title3)
-                .foregroundStyle(.secondary)
-        }
-    }
+                .font(.editorialDisplay(64, weight: .semibold))
+                .foregroundStyle(Color.ink)
+                .padding(.bottom, 18)
 
-    private var updateCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Your Update")
-                .font(.headline)
-                .foregroundStyle(.secondary)
             Text(updateMessage)
-                .font(.title2)
-                .fontWeight(.medium)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 12))
-    }
+                .font(.editorialDisplay(22, weight: .regular))
+                .italic()
+                .foregroundStyle(Color.inkSoft)
+                .lineSpacing(4)
+                .frame(maxWidth: 540, alignment: .leading)
 
-    private var quickActions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Quick Clean Up")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
-                QuickActionCard(
-                    title: "Set overdue to Triage",
-                    systemImage: "questionmark.circle",
-                    count: overdue.count,
-                    role: nil
-                ) { performSetOverdueToTriage() }
-
-                QuickActionCard(
-                    title: "Move done to Archive",
-                    systemImage: "archivebox",
-                    count: done.count,
-                    role: nil
-                ) { performMoveDoneToArchive() }
-
-                QuickActionCard(
-                    title: "Move cancelled to Archive",
-                    systemImage: "archivebox",
-                    count: cancelled.count,
-                    role: nil
-                ) { performMoveCancelledToArchive() }
-
-                QuickActionCard(
-                    title: "Delete cancelled",
-                    systemImage: "trash",
-                    count: cancelled.count,
-                    role: .destructive
-                ) { confirmingDeleteCancelled = true }
+            if !updateNotes.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(updateNotes) { note in
+                            UpdateChip(note: note) {
+                                onOpenNote?(note.id)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .padding(.top, 16)
             }
         }
+    }
+
+    // MARK: - Quick actions (editorial list, not card grid)
+
+    private var quickActions: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Quick Cleanup")
+                    .eyebrowStyle()
+                Spacer()
+                Text(cleanupTotal == 0 ? "All clear" : "\(cleanupTotal) waiting")
+                    .font(.editorialItalic(13))
+                    .foregroundStyle(Color.inkMuted)
+            }
+            .padding(.bottom, 18)
+
+            VStack(spacing: 0) {
+                QuickActionRow(
+                    title: "Set overdue to Triage",
+                    detail: "Stops the bleed; marks them for review",
+                    symbol: "questionmark.circle",
+                    count: overdue.count,
+                    action: performSetOverdueToTriage
+                )
+                Divider().background(Color.inkHairline)
+                QuickActionRow(
+                    title: "Move done to Archive",
+                    detail: "Closes out finished work",
+                    symbol: "archivebox",
+                    count: done.count,
+                    action: performMoveDoneToArchive
+                )
+                Divider().background(Color.inkHairline)
+                QuickActionRow(
+                    title: "Move cancelled to Archive",
+                    detail: "Tidy without deleting",
+                    symbol: "archivebox.fill",
+                    count: cancelled.count,
+                    action: performMoveCancelledToArchive
+                )
+                Divider().background(Color.inkHairline)
+                QuickActionRow(
+                    title: "Delete cancelled",
+                    detail: "Permanent — gone for good",
+                    symbol: "trash",
+                    count: cancelled.count,
+                    role: .destructive,
+                    action: { confirmingDeleteCancelled = true }
+                )
+            }
+            .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.inkHairline, lineWidth: 0.5)
+            )
+        }
+    }
+
+    private var cleanupTotal: Int {
+        overdue.count + done.count + cancelled.count
     }
 
     @ViewBuilder
     private var homepageSection: some View {
         if let note = homepageNotes.first {
-            HomepageNoteSection(note: note)
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Notes")
+                        .eyebrowStyle()
+                    Spacer()
+                    Text("Pinned to home")
+                        .font(.editorialItalic(13))
+                        .foregroundStyle(Color.inkMuted)
+                }
+
+                HomepageNoteSection(note: note)
+            }
         }
     }
 
@@ -180,65 +240,124 @@ struct HomeScreenView: View {
 
     private func performMoveDoneToArchive() {
         let now = Date.now
-        for n in done {
-            n.archivedDate = now
-        }
+        for n in done { n.archivedDate = now }
         try? context.save()
     }
 
     private func performMoveCancelledToArchive() {
         let now = Date.now
-        for n in cancelled {
-            n.archivedDate = now
-        }
+        for n in cancelled { n.archivedDate = now }
         try? context.save()
     }
 
     private func performDeleteCancelled() {
-        for n in cancelled {
-            context.delete(n)
-        }
+        for n in cancelled { context.delete(n) }
         try? context.save()
     }
 }
 
-private struct QuickActionCard: View {
-    let title: String
-    let systemImage: String
-    let count: Int
-    let role: ButtonRole?
+// MARK: - Quick Action Row (editorial list style)
+
+private struct UpdateChip: View {
+    let note: Note
     let action: () -> Void
 
+    @State private var isHovered: Bool = false
+
+    private var leadingDot: Color? {
+        if note.priority == .urgent { return .editorialRed }
+        if note.priority == .high { return .editorialAmber }
+        if note.todoEnabled { return note.status.tint }
+        return nil
+    }
+
     var body: some View {
-        Button(role: role, action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.title3)
-                    .frame(width: 28, height: 28)
-                    .foregroundStyle(role == .destructive ? .red : .accentColor)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                    Text("\(count) item\(count == 1 ? "" : "s")")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        Button(action: action) {
+            HStack(spacing: 7) {
+                if let dot = leadingDot {
+                    Circle()
+                        .fill(dot)
+                        .frame(width: 6, height: 6)
                 }
-                Spacer()
+                Text(note.title.isEmpty ? "Untitled" : note.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.ink)
+                    .lineLimit(1)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 10))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(
+                    isHovered
+                        ? Color.secondary.opacity(0.15)
+                        : Color.secondary.opacity(0.08)
+                )
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color.secondary.opacity(0.15), lineWidth: 0.5)
+                Capsule().strokeBorder(Color.inkHairline, lineWidth: 0.5)
             )
         }
         .buttonStyle(.plain)
-        .disabled(count == 0)
-        .opacity(count == 0 ? 0.45 : 1)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
+        }
     }
 }
+
+private struct QuickActionRow: View {
+    let title: String
+    let detail: String
+    let symbol: String
+    let count: Int
+    var role: ButtonRole? = nil
+    let action: () -> Void
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(role: role, action: action) {
+            HStack(alignment: .center, spacing: 18) {
+                Image(systemName: symbol)
+                    .font(.system(size: 18, weight: .light))
+                    .foregroundStyle(role == .destructive ? Color.editorialRed : Color.accentColor)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.editorialDisplay(17, weight: .medium))
+                        .foregroundStyle(Color.ink)
+                    Text(detail)
+                        .font(.editorialItalic(13))
+                        .foregroundStyle(Color.inkMuted)
+                }
+
+                Spacer()
+
+                Text(count == 0 ? "—" : "\(count)")
+                    .font(.editorialNumeric(20, weight: .regular))
+                    .foregroundStyle(count == 0 ? Color.inkMuted.opacity(0.5) : Color.ink)
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.accentColor.opacity(isHovered ? 1 : 0))
+                    .offset(x: isHovered ? 0 : -4)
+                    .frame(width: 14)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .contentShape(.rect)
+            .background(isHovered ? Color.accentColor.opacity(0.04) : Color.clear)
+        }
+        .buttonStyle(.plain)
+        .disabled(count == 0)
+        .opacity(count == 0 ? 0.5 : 1)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) { isHovered = hovering }
+        }
+    }
+}
+
+// MARK: - Homepage Note Section
 
 private struct HomepageNoteSection: View {
     @Bindable var note: HomepageNote
@@ -246,22 +365,18 @@ private struct HomepageNoteSection: View {
     @State private var saveTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Notes")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            TextEditor(text: $note.body)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .padding(10)
-                .frame(minHeight: 140)
-                .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color.secondary.opacity(0.15), lineWidth: 0.5)
-                )
-                .onChange(of: note.body) { _, _ in scheduleSave() }
-        }
+        TextEditor(text: $note.body)
+            .font(.system(size: 15, design: .serif))
+            .lineSpacing(5)
+            .scrollContentBackground(.hidden)
+            .padding(20)
+            .frame(minHeight: 160)
+            .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.inkHairline, lineWidth: 0.5)
+            )
+            .onChange(of: note.body) { _, _ in scheduleSave() }
     }
 
     private func scheduleSave() {

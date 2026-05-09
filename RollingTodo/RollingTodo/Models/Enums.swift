@@ -31,11 +31,11 @@ enum Priority: Int, CaseIterable, Identifiable, Codable {
 
     var tint: Color {
         switch self {
-        case .none: .secondary
-        case .low: .gray
-        case .normal: .blue
-        case .high: .orange
-        case .urgent: .red
+        case .none: .inkMuted
+        case .low: .inkMuted
+        case .normal: .editorialNavy
+        case .high: .editorialAmber
+        case .urgent: .editorialRed
         }
     }
 }
@@ -74,12 +74,12 @@ enum Status: Int, CaseIterable, Identifiable, Codable {
 
     var tint: Color {
         switch self {
-        case .notStarted: .secondary
-        case .cancelled: .gray
-        case .triage: .orange
-        case .readyToStart: .blue
-        case .inProgress: .purple
-        case .done: .green
+        case .notStarted: .inkMuted
+        case .cancelled: .inkMuted
+        case .triage: .editorialMustard
+        case .readyToStart: .editorialNavy
+        case .inProgress: .editorialPlum
+        case .done: .editorialSage
         }
     }
 }
@@ -106,16 +106,16 @@ enum LabelColor: String, CaseIterable, Identifiable, Codable {
     var swatch: Color? {
         switch self {
         case .none: nil
-        case .red: .red
-        case .orange: .orange
-        case .yellow: .yellow
-        case .green: .green
-        case .mint: .mint
-        case .teal: .teal
-        case .blue: .blue
-        case .purple: .purple
-        case .pink: .pink
-        case .gray: .gray
+        case .red: .editorialRed
+        case .orange: .editorialAmber
+        case .yellow: .editorialMustard
+        case .green: .editorialSage
+        case .mint: Color(red: 0.451, green: 0.722, blue: 0.616)
+        case .teal: Color(red: 0.318, green: 0.557, blue: 0.604)
+        case .blue: .editorialNavy
+        case .purple: .editorialPlum
+        case .pink: Color(red: 0.804, green: 0.475, blue: 0.557)
+        case .gray: .inkMuted
         }
     }
 }

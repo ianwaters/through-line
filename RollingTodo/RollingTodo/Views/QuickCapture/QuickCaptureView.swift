@@ -17,12 +17,11 @@ struct QuickCaptureView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "bolt.fill")
-                    .foregroundStyle(.tint)
-                Text("Quick Capture")
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("A new thought")
+                    .font(.editorialDisplay(20, weight: .semibold))
+                    .foregroundStyle(Color.ink)
                 Spacer()
                 if !folders.isEmpty {
                     Picker("Folder", selection: $quickCaptureFolderID) {
@@ -38,37 +37,63 @@ struct QuickCaptureView: View {
                 }
             }
 
-            TextField("Title", text: $title)
-                .textFieldStyle(.roundedBorder)
-                .focused($titleFocus)
-                .onSubmit(save)
+            VStack(alignment: .leading, spacing: 10) {
+                TextField("Title", text: $title)
+                    .font(.editorialDisplay(20, weight: .medium))
+                    .textFieldStyle(.plain)
+                    .focused($titleFocus)
+                    .onSubmit(save)
 
-            TextEditor(text: $noteBody)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 80, maxHeight: 160)
-                .padding(6)
-                .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.secondary.opacity(0.2))
-                )
+                Rectangle()
+                    .fill(Color.inkHairline)
+                    .frame(height: 0.5)
+
+                TextEditor(text: $noteBody)
+                    .font(.system(size: 14, design: .serif))
+                    .lineSpacing(3)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 90, maxHeight: 180)
+
+                if noteBody.isEmpty {
+                    Text("A short note, link, or markdown.")
+                        .font(.editorialItalic(13))
+                        .foregroundStyle(Color.inkMuted)
+                        .padding(.top, -8)
+                        .allowsHitTesting(false)
+                }
+            }
 
             HStack {
-                Toggle("Todo", isOn: $asTodo)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
+                Toggle(isOn: $asTodo) {
+                    Label("Todo", systemImage: "checkmark.circle")
+                        .labelStyle(.titleAndIcon)
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+
                 Spacer()
+
                 Button("Cancel") { dismiss() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.inkSoft)
                     .keyboardShortcut(.cancelAction)
-                Button("Save") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canSave)
+
+                Button {
+                    save()
+                } label: {
+                    Text("Capture")
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSave)
             }
         }
-        .padding(16)
-        .frame(minWidth: 360, idealWidth: 380)
+        .padding(20)
+        .frame(minWidth: 380, idealWidth: 400)
         .onAppear { titleFocus = true }
     }
 

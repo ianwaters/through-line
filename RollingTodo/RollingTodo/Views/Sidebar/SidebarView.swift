@@ -22,7 +22,7 @@ struct SidebarView: View {
                     .tag(SidebarSelection.home)
             }
 
-            Section(tab.displayName) {
+            Section {
                 Label("All", systemImage: "tray.full")
                     .tag(SidebarSelection.allNotes)
 
@@ -41,14 +41,20 @@ struct SidebarView: View {
                         }
                 }
                 .onMove(perform: moveFolders)
+            } header: {
+                Text(tab.displayName)
+                    .eyebrowStyle(tint: Color.inkMuted)
             }
 
             if !tagsList.isEmpty {
-                Section("Tags") {
+                Section {
                     ForEach(tagsList, id: \.self) { tag in
                         Label("#\(tag)", systemImage: "tag")
                             .tag(SidebarSelection.tag(tag))
                     }
+                } header: {
+                    Text("Tags")
+                        .eyebrowStyle(tint: Color.inkMuted)
                 }
             }
         }
@@ -214,7 +220,7 @@ struct SidebarView: View {
 #Preview {
     @Previewable @State var sel: SidebarSelection? = .home
     @Previewable @State var tab: AppTab = .notes
-    return NavigationSplitView {
+    NavigationSplitView {
         SidebarView(selection: $sel, tab: $tab)
     } detail: {
         Text("Detail")

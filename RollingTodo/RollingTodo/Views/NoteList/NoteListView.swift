@@ -5,29 +5,27 @@ struct NoteListView: View {
     let sidebarSelection: SidebarSelection?
     let tab: AppTab
     @Binding var noteSelection: UUID?
+    @Binding var searchText: String
 
     var body: some View {
         switch sidebarSelection {
-        case .none:
-            ContentUnavailableView(
-                "Nothing Selected",
-                systemImage: "sidebar.left",
-                description: Text("Pick something from the sidebar.")
-            )
-        case .home:
-            ContentUnavailableView(
-                "Home is Open",
-                systemImage: "house.fill",
-                description: Text("The home screen is showing in the detail pane.")
+        case .none, .home:
+            // .home is unreachable here — ContentView swaps to a 2-column layout
+            // when on Home, so this column never renders. .none is the launch sliver.
+            EditorialEmpty(
+                eyebrow: "Sidebar",
+                title: "Pick a destination",
+                detail: "Choose a folder or tag from the sidebar.",
+                symbol: "sidebar.left"
             )
         case .allNotes:
-            FilteredNoteListView(tab: tab, scope: .all, noteSelection: $noteSelection)
+            FilteredNoteListView(tab: tab, scope: .all, noteSelection: $noteSelection, searchText: $searchText)
                 .id("\(tab.rawValue)-all")
         case .folder(let id):
-            FilteredNoteListView(tab: tab, scope: .folder(id), noteSelection: $noteSelection)
+            FilteredNoteListView(tab: tab, scope: .folder(id), noteSelection: $noteSelection, searchText: $searchText)
                 .id("\(tab.rawValue)-folder-\(id)")
         case .tag(let t):
-            FilteredNoteListView(tab: tab, scope: .tag(t), noteSelection: $noteSelection)
+            FilteredNoteListView(tab: tab, scope: .tag(t), noteSelection: $noteSelection, searchText: $searchText)
                 .id("\(tab.rawValue)-tag-\(t)")
         }
     }
@@ -37,6 +35,7 @@ struct FilteredNoteListView: View {
     let tab: AppTab
     let scope: NoteListScope
     @Binding var noteSelection: UUID?
+    @Binding var searchText: String
 
     @Environment(\.modelContext) private var context
     @Query private var notes: [Note]
@@ -46,7 +45,6 @@ struct FilteredNoteListView: View {
     @State private var renameText: String = ""
     @FocusState private var renameFocus: UUID?
 
-    @State private var searchText: String = ""
     @State private var sort: NoteSortOrder = .manual
     @AppStorage("dueTodayIsUrgent") private var dueTodayIsUrgent: Bool = false
     @AppStorage("focusModeEnabled") private var focusModeEnabled: Bool = false
@@ -62,10 +60,11 @@ struct FilteredNoteListView: View {
         return "noteSort.\(tab.rawValue).\(scopeKey)"
     }
 
-    init(tab: AppTab, scope: NoteListScope, noteSelection: Binding<UUID?>) {
+    init(tab: AppTab, scope: NoteListScope, noteSelection: Binding<UUID?>, searchText: Binding<String>) {
         self.tab = tab
         self.scope = scope
         self._noteSelection = noteSelection
+        self._searchText = searchText
 
         let archived = tab == .archive
         let predicate: Predicate<Note>
@@ -198,7 +197,9 @@ struct FilteredNoteListView: View {
             }
         }
         .navigationTitle(navTitle)
-        .searchable(text: $searchText, prompt: tab == .archive ? "Search archive" : "Search notes")
+        .safeAreaInset(edge: .top, spacing: 0) {
+            NoteSearchField(text: $searchText, prompt: tab == .archive ? "Search archive" : "Search notes")
+        }
         .toolbar {
             ToolbarItemGroup {
                 Menu {
@@ -234,7 +235,7 @@ struct FilteredNoteListView: View {
             if renamingID == note.id {
                 renameRow(for: note)
             } else {
-                NoteRow(note: note)
+                NoteRow(note: note, isSelected: noteSelection == note.id)
             }
         }
         .tag(note.id)
@@ -291,43 +292,61 @@ struct FilteredNoteListView: View {
     @ViewBuilder
     private var emptyState: some View {
         if focusActive && !sortedNotes.isEmpty {
-            ContentUnavailableView(
-                "Nothing in Focus",
-                systemImage: "scope",
-                description: Text("Nothing's due within \(focusDueWindow.displayName.lowercased()) or at \(focusPriorityFloor.displayName.lowercased()) priority.")
+            EditorialEmpty(
+                eyebrow: "In focus",
+                title: "Clear sky",
+                detail: "Nothing's due \(focusDueWindow.displayName.lowercased()) or at \(focusPriorityFloor.displayName.lowercased()) priority.",
+                symbol: "scope"
             )
         } else if !searchText.isEmpty {
-            ContentUnavailableView.search(text: searchText)
+            EditorialEmpty(
+                eyebrow: "No matches",
+                title: "Nothing found",
+                detail: "Try a different word.",
+                symbol: "magnifyingglass"
+            )
         } else if tab == .archive {
-            ContentUnavailableView(
-                "No Archived Notes",
-                systemImage: "archivebox",
-                description: Text("Notes you archive will land here.")
+            EditorialEmpty(
+                eyebrow: "Archive",
+                title: "Nothing tucked away",
+                detail: "Notes you archive will land here for safekeeping.",
+                symbol: "archivebox"
             )
         } else {
-            ContentUnavailableView(
-                "No Notes",
-                systemImage: "note.text",
-                description: Text("Tap + to create one.")
+            EditorialEmpty(
+                eyebrow: "Notes",
+                title: "A blank page",
+                detail: "Press ⌘N to begin.",
+                symbol: "doc.text"
             )
         }
     }
 
     private var focusBanner: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Image(systemName: "scope")
-                .foregroundStyle(.tint)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
             Text("Focus")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tint)
-            Text("· \(focusDueWindow.displayName.lowercased()) or \(focusPriorityFloor.displayName.lowercased())")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .eyebrowStyle()
+            Text("·")
+                .font(.system(size: 10))
+                .foregroundStyle(Color.inkMuted)
+            Text("\(focusDueWindow.displayName.lowercased()) or \(focusPriorityFloor.displayName.lowercased())")
+                .font(.editorialItalic(12))
+                .foregroundStyle(Color.inkSoft)
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Color.accentColor.opacity(0.08))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Color.accentColor.opacity(0.06)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(Color.accentColor.opacity(0.15))
+                        .frame(height: 0.5)
+                }
+        )
     }
 
     private func loadSort() {

@@ -19,16 +19,20 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Home Screen") {
+            Section {
                 Toggle("Show notes section on home screen", isOn: $showHomepageNote)
+            } header: {
+                Text("Home Screen").eyebrowStyle(tint: Color.inkMuted)
             }
 
-            Section("Todo Behaviour") {
+            Section {
                 Toggle("Items due today are urgent (sorting)", isOn: $dueTodayIsUrgent)
                 Toggle("Auto-reschedule overdue todos to today", isOn: $autoRescheduleOverdue)
+            } header: {
+                Text("Todo Behaviour").eyebrowStyle(tint: Color.inkMuted)
             }
 
-            Section("Focus Mode") {
+            Section {
                 Picker("Due within", selection: $focusDueWindow) {
                     ForEach(FocusDueWindow.allCases) { Text($0.displayName).tag($0) }
                 }
@@ -36,11 +40,13 @@ struct SettingsView: View {
                     ForEach(FocusPriorityFloor.allCases) { Text($0.displayName).tag($0) }
                 }
                 Text("When Focus is on, the note list hides anything that isn't due within your window or above your priority floor. Pinned notes always pass; done and cancelled todos never do.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.editorialItalic(12))
+                    .foregroundStyle(Color.inkSoft)
+            } header: {
+                Text("Focus Mode").eyebrowStyle(tint: Color.inkMuted)
             }
 
-            Section("Auto-Archive Inactive Todos") {
+            Section {
                 Toggle("Auto-archive inactive todo notes", isOn: $autoArchiveEnabled)
                 Picker("Untouched for", selection: $autoArchiveAge) {
                     ForEach(ArchiveAge.allCases) { age in
@@ -49,11 +55,13 @@ struct SettingsView: View {
                 }
                 .disabled(!autoArchiveEnabled)
                 Text("Only notes with Todo enabled are auto-archived. Reference notes and other plain markdown notes are never touched.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.editorialItalic(12))
+                    .foregroundStyle(Color.inkSoft)
+            } header: {
+                Text("Auto-Archive Inactive Todos").eyebrowStyle(tint: Color.inkMuted)
             }
 
-            Section("Backup") {
+            Section {
                 Button(action: buildAndExport) {
                     HStack {
                         Label(building ? "Preparing export…" : "Export all notes…",
@@ -66,17 +74,19 @@ struct SettingsView: View {
                 if let exportError {
                     Text(exportError)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color.editorialRed)
                 }
                 Text("Exports every note as a markdown file with YAML front-matter for metadata. One zip you can drop anywhere.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.editorialItalic(12))
+                    .foregroundStyle(Color.inkSoft)
+            } header: {
+                Text("Backup").eyebrowStyle(tint: Color.inkMuted)
             }
 
             Section {
                 Text("Auto-archive and overdue rescheduling run when the app comes to the foreground.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(.editorialItalic(12))
+                    .foregroundStyle(Color.inkSoft)
             }
         }
         .formStyle(.grouped)
