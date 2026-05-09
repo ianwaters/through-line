@@ -100,6 +100,7 @@ struct ContentView: View {
         }
         .onAppear {
             context.undoManager = undoManager
+            CloudSettingsSync.shared.start()
             MaintenanceService.shared.runIfDue(context: context)
         }
         .onChange(of: scenePhase) { _, newPhase in
