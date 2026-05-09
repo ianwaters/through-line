@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+
+# Xcode user-specific & build artifacts
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.moved-aside
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.pins
+Package.resolved
+
+# CocoaPods (defensive — not used)
+Pods/
+
+# Carthage (defensive — not used)
+Carthage/Build/
+
+# fastlane (defensive — not used)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Provisioning profiles & signing (machine-specific)
+*.mobileprovision
+*.p12
+
+# Editors
+*.swp
+*~
+.vscode/
+.idea/
+
+# Misc
+*.log

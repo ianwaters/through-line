@@ -1,0 +1,65 @@
+import Foundation
+import SwiftData
+
+@MainActor
+final class MaintenanceService {
+    static let shared = MaintenanceService()
+
+    private var lastRun: Date = .distantPast
+    private let cooldown: TimeInterval = 60
+
+    private init() {}
+
+    func runIfDue(context: ModelContext) {
+        guard Date.now.timeIntervalSince(lastRun) >= cooldown else { return }
+        lastRun = .now
+        run(context: context)
+    }
+
+    func run(context: ModelContext) {
+        let defaults = UserDefaults.standard
+        let autoReschedule = defaults.bool(forKey: "autoRescheduleOverdue")
+        let autoArchive = defaults.bool(forKey: "autoArchiveEnabled")
+        let ageRaw = defaults.string(forKey: "autoArchiveAge") ?? ArchiveAge.month.rawValue
+        let age = ArchiveAge(rawValue: ageRaw) ?? .month
+
+        if autoReschedule {
+            rescheduleOverdue(context: context)
+        }
+        if autoArchive {
+            archiveInactive(context: context, age: age)
+        }
+        try? context.save()
+    }
+
+    private func rescheduleOverdue(context: ModelContext) {
+        let cal = Calendar.current
+        let startOfToday = cal.startOfDay(for: .now)
+        let descriptor = FetchDescriptor<Note>(predicate: #Predicate {
+            $0.archivedDate == nil && $0.dueDate != nil
+        })
+        guard let notes = try? context.fetch(descriptor) else { return }
+
+        let cancelledRaw = Status.cancelled.rawValue
+        let doneRaw = Status.done.rawValue
+
+        for n in notes {
+            guard let due = n.dueDate else { continue }
+            guard cal.startOfDay(for: due) < startOfToday else { continue }
+            guard n.statusRaw != cancelledRaw, n.statusRaw != doneRaw else { continue }
+            n.dueDate = startOfToday
+        }
+    }
+
+    private func archiveInactive(context: ModelContext, age: ArchiveAge) {
+        guard let cutoff = Calendar.current.date(byAdding: .day, value: -age.days, to: .now) else { return }
+        let descriptor = FetchDescriptor<Note>(predicate: #Predicate {
+            $0.archivedDate == nil && $0.modifiedDate < cutoff
+        })
+        guard let notes = try? context.fetch(descriptor) else { return }
+        let now = Date.now
+        for n in notes {
+            n.archivedDate = now
+        }
+    }
+}
