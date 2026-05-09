@@ -46,15 +46,38 @@ struct HomeScreenView: View {
     private var done: [Note] { todoEnabledActive.filter { $0.status == .done } }
     private var cancelled: [Note] { todoEnabledActive.filter { $0.status == .cancelled } }
 
-    private var greeting: String {
-        let hour = calendar.component(.hour, from: .now)
-        switch hour {
-        case 5..<12: return "Good morning"
-        case 12..<17: return "Good afternoon"
-        case 17..<22: return "Good evening"
-        default: return "Hello"
+    private enum TimeOfDay {
+        case morning, afternoon, evening, night
+
+        var greeting: String {
+            switch self {
+            case .morning: "Good morning"
+            case .afternoon: "Good afternoon"
+            case .evening: "Good evening"
+            case .night: "Hello"
+            }
+        }
+
+        var noun: String {
+            switch self {
+            case .morning: "morning"
+            case .afternoon: "afternoon"
+            case .evening: "evening"
+            case .night: "night"
+            }
         }
     }
+
+    private var timeOfDay: TimeOfDay {
+        switch calendar.component(.hour, from: .now) {
+        case 5..<12: .morning
+        case 12..<17: .afternoon
+        case 17..<22: .evening
+        default: .night
+        }
+    }
+
+    private var greeting: String { timeOfDay.greeting }
 
     private var updateMessage: String {
         if urgent.count > 0 {
@@ -66,7 +89,7 @@ struct HomeScreenView: View {
         if overdue.count > 0 {
             return overdue.count == 1 ? "One overdue item lingers." : "\(overdue.count) overdue items linger."
         }
-        return "Nothing urgent. A clear morning."
+        return "Nothing urgent. A clear \(timeOfDay.noun)."
     }
 
     /// The notes that the update message refers to — surfaced as chips below the headline.
