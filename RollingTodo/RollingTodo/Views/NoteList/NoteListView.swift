@@ -198,21 +198,13 @@ struct FilteredNoteListView: View {
         }
         .navigationTitle(navTitle)
         .safeAreaInset(edge: .top, spacing: 0) {
-            NoteSearchField(text: $searchText, prompt: tab == .archive ? "Search archive" : "Search notes")
+            VStack(spacing: 0) {
+                NoteSearchField(text: $searchText, prompt: tab == .archive ? "Search archive" : "Search notes")
+                sortMenuRow
+            }
         }
         .toolbar {
-            ToolbarItemGroup {
-                Menu {
-                    Picker("Sort", selection: $sort) {
-                        ForEach(NoteSortOrder.allCases) { option in
-                            Text(option.displayName).tag(option)
-                        }
-                    }
-                } label: {
-                    Label("Sort", systemImage: "arrow.up.arrow.down")
-                }
-                .help("Sort order")
-
+            ToolbarItem {
                 Button(action: createNote) {
                     Label("New Note", systemImage: "square.and.pencil")
                 }
@@ -287,6 +279,25 @@ struct FilteredNoteListView: View {
                 #endif
         }
         .padding(.vertical, 2)
+    }
+
+    private var sortMenuRow: some View {
+        HStack(spacing: 6) {
+            Text("Sort by")
+                .eyebrowStyle()
+            Picker("Sort", selection: $sort) {
+                ForEach(NoteSortOrder.allCases) { option in
+                    Text(option.displayName).tag(option)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .font(.editorialItalic(12))
+            .tint(Color.inkSoft)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 6)
     }
 
     @ViewBuilder
