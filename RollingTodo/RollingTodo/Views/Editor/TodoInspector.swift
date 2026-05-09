@@ -3,11 +3,66 @@ import SwiftData
 
 struct TodoInspector: View {
     @Bindable var note: Note
+    @Binding var mode: EditorMode
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(UnlockSession.self) private var unlockSession
 
     var body: some View {
+        VStack(spacing: 0) {
+            modePicker
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            inspectorForm
+        }
+    }
+
+    private var modePicker: some View {
+        let modes = Array(EditorMode.allCases)
+        return HStack(spacing: 0) {
+            ForEach(Array(modes.enumerated()), id: \.element) { idx, m in
+                modeSegment(for: m)
+
+                if idx < modes.count - 1 {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.35))
+                        .frame(width: 1, height: 14)
+                        .opacity(isDividerHidden(at: idx, modes: modes) ? 0 : 1)
+                }
+            }
+        }
+        .background(Color.secondary.opacity(0.18), in: Capsule())
+    }
+
+    @ViewBuilder
+    private func modeSegment(for m: EditorMode) -> some View {
+        let isSelected = (mode == m)
+        Button {
+            mode = m
+        } label: {
+            Image(systemName: m.sfSymbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 28)
+                .background {
+                    if isSelected {
+                        Capsule().fill(Color.accentColor)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(m.displayName)
+    }
+
+    private func isDividerHidden(at index: Int, modes: [EditorMode]) -> Bool {
+        modes[index] == mode || (index + 1 < modes.count && modes[index + 1] == mode)
+    }
+
+    private var inspectorForm: some View {
         Form {
             Section {
                 Toggle("Todo Enabled", isOn: $note.todoEnabled)

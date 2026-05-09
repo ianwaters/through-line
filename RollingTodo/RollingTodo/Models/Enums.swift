@@ -231,6 +231,30 @@ enum RecurrenceMode: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum EditorMode: String, CaseIterable, Identifiable, Codable {
+    case edit
+    case preview
+    case split
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .edit: "Edit"
+        case .preview: "Preview"
+        case .split: "Split"
+        }
+    }
+
+    var sfSymbol: String {
+        switch self {
+        case .edit: "pencil"
+        case .preview: "eye"
+        case .split: "rectangle.split.2x1"
+        }
+    }
+}
+
 enum FocusDueWindow: String, CaseIterable, Identifiable, Codable {
     case today
     case tomorrow

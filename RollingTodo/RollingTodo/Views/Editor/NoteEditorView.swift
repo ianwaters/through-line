@@ -98,30 +98,11 @@ private struct NoteEditorContent: View {
     @Bindable var note: Note
     @Environment(\.modelContext) private var context
 
-    @State private var mode: EditorMode = .edit
+    @AppStorage("editorMode") private var mode: EditorMode = .edit
     @AppStorage("inspectorVisible") private var showInspector: Bool = false
     @State private var saveTask: Task<Void, Never>?
     @State private var savedAt: Date?
     @State private var ticker: Date = .now
-
-    enum EditorMode: String, CaseIterable, Identifiable {
-        case edit, preview, split
-        var id: String { rawValue }
-        var displayName: String {
-            switch self {
-            case .edit: "Edit"
-            case .preview: "Preview"
-            case .split: "Split"
-            }
-        }
-        var sfSymbol: String {
-            switch self {
-            case .edit: "pencil"
-            case .preview: "eye"
-            case .split: "rectangle.split.2x1"
-            }
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -185,19 +166,10 @@ private struct NoteEditorContent: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 if let savedAt {
                     SavedIndicator(savedAt: savedAt, now: ticker)
                 }
-            }
-            ToolbarItemGroup {
-                Picker("Mode", selection: $mode) {
-                    ForEach(EditorMode.allCases) { m in
-                        Image(systemName: m.sfSymbol).tag(m)
-                            .help(m.displayName)
-                    }
-                }
-                .pickerStyle(.segmented)
 
                 Button {
                     showInspector.toggle()
@@ -214,7 +186,7 @@ private struct NoteEditorContent: View {
             }
         }
         .inspector(isPresented: $showInspector) {
-            TodoInspector(note: note)
+            TodoInspector(note: note, mode: $mode)
                 .inspectorColumnWidth(min: 240, ideal: 280, max: 360)
         }
         .onChange(of: note.title) { _, _ in scheduleSave() }
