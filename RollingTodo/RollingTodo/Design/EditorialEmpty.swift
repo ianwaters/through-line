@@ -23,9 +23,11 @@ struct EditorialEmpty: View {
             VStack(spacing: 8) {
                 Text(eyebrow)
                     .eyebrowStyle()
+                    .multilineTextAlignment(.center)
                 Text(title)
                     .font(.editorialDisplay(26, weight: .semibold))
                     .foregroundStyle(Color.ink)
+                    .multilineTextAlignment(.center)
                 Text(detail)
                     .font(.editorialItalic(14))
                     .foregroundStyle(Color.inkSoft)

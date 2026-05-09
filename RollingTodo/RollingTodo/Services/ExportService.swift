@@ -31,6 +31,7 @@ enum ExportService {
 
     static func suggestedFilename(date: Date = .now) -> String {
         let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         return "RollingTodo-Export-\(f.string(from: date))"
     }

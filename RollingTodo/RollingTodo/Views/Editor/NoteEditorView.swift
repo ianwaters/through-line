@@ -25,12 +25,7 @@ struct NoteEditorView: View {
                     .id(note.id)
             }
         } else {
-            EditorialEmpty(
-                eyebrow: "Editor",
-                title: "Choose a note",
-                detail: "Pick something from the list, or press ⌘N to start fresh.",
-                symbol: "doc.text"
-            )
+            Color.clear
         }
     }
 }
@@ -174,7 +169,7 @@ private struct NoteEditorContent: View {
                 Button {
                     showInspector.toggle()
                 } label: {
-                    Image(systemName: "sidebar.right")
+                    Image(systemName: "sidebar.trailing")
                 }
                 .help("Toggle inspector")
             }

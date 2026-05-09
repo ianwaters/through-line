@@ -337,7 +337,7 @@ private struct QuickActionRow: View {
                     .font(.editorialNumeric(20, weight: .regular))
                     .foregroundStyle(count == 0 ? Color.inkMuted.opacity(0.5) : Color.ink)
 
-                Image(systemName: "arrow.right")
+                Image(systemName: "arrow.forward")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.accentColor.opacity(isHovered ? 1 : 0))
                     .offset(x: isHovered ? 0 : -4)

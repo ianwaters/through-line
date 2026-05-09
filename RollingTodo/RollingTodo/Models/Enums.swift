@@ -66,7 +66,7 @@ enum Status: Int, CaseIterable, Identifiable, Codable {
         case .notStarted: "circle"
         case .cancelled: "xmark.circle"
         case .triage: "questionmark.circle"
-        case .readyToStart: "arrow.right.circle"
+        case .readyToStart: "arrow.forward.circle"
         case .inProgress: "arrow.triangle.2.circlepath.circle"
         case .done: "checkmark.circle.fill"
         }

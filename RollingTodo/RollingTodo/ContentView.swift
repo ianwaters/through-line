@@ -49,8 +49,17 @@ struct ContentView: View {
                     sidebarSelection = .allNotes
                     noteSelection = id
                 }
-            } else {
+            } else if noteSelection != nil {
                 NoteEditorView(noteID: noteSelection)
+            } else if tab == .archive {
+                ArchiveEmptyDetail()
+            } else {
+                EditorialEmpty(
+                    eyebrow: "Editor",
+                    title: "Choose a note",
+                    detail: "Pick something from the list, or press ⌘N to start fresh.",
+                    symbol: "doc.text"
+                )
             }
         }
         .toolbar {
@@ -119,6 +128,23 @@ struct ContentView: View {
         #else
         showingSettingsSheet = true
         #endif
+    }
+}
+
+private struct ArchiveEmptyDetail: View {
+    @Query(filter: #Predicate<Note> { $0.archivedDate != nil }) private var archived: [Note]
+
+    var body: some View {
+        if archived.isEmpty {
+            EditorialEmpty(
+                eyebrow: "Archive",
+                title: "Nothing tucked away",
+                detail: "Notes you archive will land here for safekeeping.",
+                symbol: "archivebox"
+            )
+        } else {
+            Color.clear
+        }
     }
 }
 

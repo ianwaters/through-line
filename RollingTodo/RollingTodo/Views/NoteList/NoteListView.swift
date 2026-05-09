@@ -16,7 +16,7 @@ struct NoteListView: View {
                 eyebrow: "Sidebar",
                 title: "Pick a destination",
                 detail: "Choose a folder or tag from the sidebar.",
-                symbol: "sidebar.left"
+                symbol: "sidebar.leading"
             )
         case .allNotes:
             FilteredNoteListView(tab: tab, scope: .all, noteSelection: $noteSelection, searchText: $searchText)
@@ -180,11 +180,6 @@ struct FilteredNoteListView: View {
                 emptyState
             } else {
                 List(selection: $noteSelection) {
-                    if focusActive {
-                        focusBanner
-                            .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
-                            .listRowBackground(Color.clear)
-                    }
                     ForEach(displayedNotes) { note in
                         rowContainer(for: note)
                     }
@@ -201,6 +196,9 @@ struct FilteredNoteListView: View {
             VStack(spacing: 0) {
                 NoteSearchField(text: $searchText, prompt: tab == .archive ? "Search archive" : "Search notes")
                 sortMenuRow
+                if focusActive {
+                    focusBanner
+                }
             }
         }
         .toolbar {
@@ -302,7 +300,9 @@ struct FilteredNoteListView: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        if focusActive && !sortedNotes.isEmpty {
+        if tab == .archive {
+            Color.clear
+        } else if focusActive && !sortedNotes.isEmpty {
             EditorialEmpty(
                 eyebrow: "In focus",
                 title: "Clear sky",
@@ -315,13 +315,6 @@ struct FilteredNoteListView: View {
                 title: "Nothing found",
                 detail: "Try a different word.",
                 symbol: "magnifyingglass"
-            )
-        } else if tab == .archive {
-            EditorialEmpty(
-                eyebrow: "Archive",
-                title: "Nothing tucked away",
-                detail: "Notes you archive will land here for safekeeping.",
-                symbol: "archivebox"
             )
         } else {
             EditorialEmpty(
