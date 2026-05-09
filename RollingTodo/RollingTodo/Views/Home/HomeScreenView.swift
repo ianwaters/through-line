@@ -136,7 +136,12 @@ struct HomeScreenView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
+        #if os(macOS)
         .navigationTitle("")
+        #else
+        .navigationTitle("Home")
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .confirmationDialog(
             "Delete \(cancelled.count) cancelled note\(cancelled.count == 1 ? "" : "s")?",
             isPresented: $confirmingDeleteCancelled,

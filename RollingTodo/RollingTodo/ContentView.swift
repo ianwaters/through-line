@@ -67,57 +67,65 @@ struct ContentView: View {
                 ideal: isHome ? 0 : 280,
                 max: isHome ? 0 : 480
             )
+            #if os(iOS)
+            .toolbar {
+                AppPrimaryToolbar(
+                    focusModeEnabled: $focusModeEnabled,
+                    onQuickCapture: { showingQuickCapture = true },
+                    onSettings: openSettingsTapped
+                )
+            }
+            #endif
         } detail: {
-            if isHome {
-                if isCompact {
-                    Color.clear
-                } else {
-                    homeView
-                }
-            } else if noteSelection != nil {
-                NoteEditorView(noteID: noteSelection)
-            } else if tab == .archive {
-                ArchiveEmptyDetail()
-            } else {
-                EditorialEmpty(
-                    eyebrow: "Editor",
-                    title: "Choose a note",
-                    detail: "Pick something from the list, or start fresh.",
-                    symbol: "doc.text"
-                ) {
-                    Button(action: createNewNote) {
-                        Label("New Note", systemImage: "square.and.pencil")
-                            .font(.system(size: 13, weight: .semibold))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
+            Group {
+                if isHome {
+                    if isCompact {
+                        Color.clear
+                    } else {
+                        homeView
                     }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut("n", modifiers: .command)
-                    .padding(.top, 6)
+                } else if noteSelection != nil {
+                    NoteEditorView(noteID: noteSelection)
+                } else if tab == .archive {
+                    ArchiveEmptyDetail()
+                } else {
+                    EditorialEmpty(
+                        eyebrow: "Editor",
+                        title: "Choose a note",
+                        detail: "Pick something from the list, or start fresh.",
+                        symbol: "doc.text"
+                    ) {
+                        Button(action: createNewNote) {
+                            Label("New Note", systemImage: "square.and.pencil")
+                                .font(.system(size: 13, weight: .semibold))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut("n", modifiers: .command)
+                        .padding(.top, 6)
+                    }
                 }
             }
+            #if os(iOS)
+            .toolbar {
+                AppPrimaryToolbar(
+                    focusModeEnabled: $focusModeEnabled,
+                    onQuickCapture: { showingQuickCapture = true },
+                    onSettings: openSettingsTapped
+                )
+            }
+            #endif
         }
+        #if os(macOS)
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { focusModeEnabled.toggle() } label: {
-                    Label("Focus", systemImage: focusModeEnabled ? "scope" : "circle.dotted")
-                }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
-                .help(focusModeEnabled ? "Turn off Focus (⇧⌘F)" : "Focus on what's due or urgent (⇧⌘F)")
-                .foregroundStyle(focusModeEnabled ? Color.accentColor : Color.secondary)
-
-                Button { showingQuickCapture = true } label: {
-                    Label("Quick Capture", systemImage: "bolt.fill")
-                }
-                .keyboardShortcut("k", modifiers: .command)
-                .help("Quick Capture (⌘K)")
-
-                Button(action: openSettingsTapped) {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .help("Settings (⌘,)")
-            }
+            AppPrimaryToolbar(
+                focusModeEnabled: $focusModeEnabled,
+                onQuickCapture: { showingQuickCapture = true },
+                onSettings: openSettingsTapped
+            )
         }
+        #endif
         .sheet(isPresented: $showingQuickCapture) {
             QuickCaptureView()
         }
