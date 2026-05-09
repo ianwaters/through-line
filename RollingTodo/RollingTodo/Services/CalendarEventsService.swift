@@ -14,11 +14,14 @@ final class CalendarEventsService {
 
     private(set) var authStatus: EKAuthorizationStatus
     private(set) var events: [CalendarEventViewModel] = []
+    private(set) var selectedCalendarIDs: Set<String>
 
     private let selectedIDsKey = "calendarEventsSelectedIDs"
 
     private init() {
         authStatus = EKEventStore.authorizationStatus(for: .event)
+        let raw = UserDefaults.standard.string(forKey: selectedIDsKey) ?? ""
+        selectedCalendarIDs = Set(raw.split(separator: "\n").map(String.init).filter { !$0.isEmpty })
     }
 
     var isAuthorizedToRead: Bool {
@@ -61,14 +64,10 @@ final class CalendarEventsService {
         }
     }
 
-    var selectedCalendarIDs: Set<String> {
-        let raw = UserDefaults.standard.string(forKey: selectedIDsKey) ?? ""
-        return Set(raw.split(separator: "\n").map(String.init).filter { !$0.isEmpty })
-    }
-
     func setSelected(_ calendarID: String, _ selected: Bool) {
         var current = selectedCalendarIDs
         if selected { current.insert(calendarID) } else { current.remove(calendarID) }
+        selectedCalendarIDs = current
         let joined = current.sorted().joined(separator: "\n")
         UserDefaults.standard.set(joined, forKey: selectedIDsKey)
         refresh()
