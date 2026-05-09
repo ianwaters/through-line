@@ -19,7 +19,27 @@ struct ContentView: View {
     @Environment(\.openSettings) private var openSettings
     #endif
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    #endif
+
     private var isHome: Bool { sidebarSelection == .home }
+
+    private var isCompact: Bool {
+        #if os(iOS)
+        return hSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
+
+    @ViewBuilder
+    private var homeView: some View {
+        HomeScreenView { id in
+            sidebarSelection = .allNotes
+            noteSelection = id
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -28,7 +48,11 @@ struct ContentView: View {
         } content: {
             Group {
                 if isHome {
-                    Color.clear
+                    if isCompact {
+                        homeView
+                    } else {
+                        Color.clear
+                    }
                 } else {
                     NoteListView(
                         sidebarSelection: sidebarSelection,
@@ -45,9 +69,10 @@ struct ContentView: View {
             )
         } detail: {
             if isHome {
-                HomeScreenView { id in
-                    sidebarSelection = .allNotes
-                    noteSelection = id
+                if isCompact {
+                    Color.clear
+                } else {
+                    homeView
                 }
             } else if noteSelection != nil {
                 NoteEditorView(noteID: noteSelection)

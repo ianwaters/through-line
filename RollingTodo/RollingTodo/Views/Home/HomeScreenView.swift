@@ -12,7 +12,19 @@ struct HomeScreenView: View {
     @AppStorage("dueTodayIsUrgent") private var dueTodayIsUrgent: Bool = false
     @AppStorage("calendarEventsEnabled") private var calendarEventsEnabled: Bool = false
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    #endif
+
     @State private var confirmingDeleteCancelled: Bool = false
+
+    private var isCompact: Bool {
+        #if os(iOS)
+        return hSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
 
     private var calendar: Calendar { .current }
     private var startOfToday: Date { calendar.startOfDay(for: .now) }
@@ -105,22 +117,22 @@ struct HomeScreenView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 hero
-                    .padding(.bottom, 56)
+                    .padding(.bottom, isCompact ? 32 : 56)
 
                 if calendarEventsEnabled {
                     EventsTodaySection()
-                        .padding(.bottom, 56)
+                        .padding(.bottom, isCompact ? 32 : 56)
                 }
 
                 quickActions
-                    .padding(.bottom, showHomepageNote && !homepageNotes.isEmpty ? 56 : 24)
+                    .padding(.bottom, showHomepageNote && !homepageNotes.isEmpty ? (isCompact ? 32 : 56) : 24)
 
                 if showHomepageNote {
                     homepageSection
                 }
             }
-            .padding(.horizontal, 64)
-            .padding(.vertical, 72)
+            .padding(.horizontal, isCompact ? 24 : 64)
+            .padding(.vertical, isCompact ? 32 : 72)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
@@ -147,7 +159,7 @@ struct HomeScreenView: View {
                 .padding(.bottom, 14)
 
             Text(greeting)
-                .font(.editorialDisplay(64, weight: .semibold))
+                .font(.editorialDisplay(isCompact ? 40 : 64, weight: .semibold))
                 .foregroundStyle(Color.ink)
                 .padding(.bottom, 18)
 
