@@ -10,6 +10,7 @@ struct HomeScreenView: View {
 
     @AppStorage("showHomepageNote") private var showHomepageNote: Bool = true
     @AppStorage("dueTodayIsUrgent") private var dueTodayIsUrgent: Bool = false
+    @AppStorage("calendarEventsEnabled") private var calendarEventsEnabled: Bool = false
 
     @State private var confirmingDeleteCancelled: Bool = false
 
@@ -105,6 +106,11 @@ struct HomeScreenView: View {
             VStack(alignment: .leading, spacing: 0) {
                 hero
                     .padding(.bottom, 56)
+
+                if calendarEventsEnabled {
+                    EventsTodaySection()
+                        .padding(.bottom, 56)
+                }
 
                 quickActions
                     .padding(.bottom, showHomepageNote && !homepageNotes.isEmpty ? 56 : 24)

@@ -110,11 +110,13 @@ struct ContentView: View {
         .onAppear {
             context.undoManager = undoManager
             CloudSettingsSync.shared.start()
+            CalendarEventsService.shared.start()
             MaintenanceService.shared.runIfDue(context: context)
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 MaintenanceService.shared.runIfDue(context: context)
+                CalendarEventsService.shared.refreshIfDue()
             } else {
                 unlockSession.lockAll()
             }

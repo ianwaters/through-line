@@ -1,6 +1,13 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import EventKit
+
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var context
@@ -11,6 +18,9 @@ struct SettingsView: View {
     @AppStorage("autoArchiveAge") private var autoArchiveAge: ArchiveAge = .month
     @AppStorage("focusDueWindow") private var focusDueWindow: FocusDueWindow = .thisWeek
     @AppStorage("focusPriorityFloor") private var focusPriorityFloor: FocusPriorityFloor = .highOrUrgent
+    @AppStorage("calendarEventsEnabled") private var calendarEventsEnabled: Bool = false
+
+    @State private var calendarService = CalendarEventsService.shared
 
     @State private var exportDocument: ExportDocument?
     @State private var showExporter: Bool = false
@@ -31,6 +41,8 @@ struct SettingsView: View {
             } header: {
                 Text("Todo Behaviour").eyebrowStyle(tint: Color.inkMuted)
             }
+
+            calendarEventsSection
 
             Section {
                 Picker("Due within", selection: $focusDueWindow) {
@@ -102,6 +114,80 @@ struct SettingsView: View {
                 exportError = err.localizedDescription
             }
         }
+    }
+
+    @ViewBuilder
+    private var calendarEventsSection: some View {
+        Section {
+            Toggle("Show today's events on Home", isOn: $calendarEventsEnabled)
+                .onChange(of: calendarEventsEnabled) { _, newValue in
+                    if newValue, calendarService.authStatus == .notDetermined {
+                        Task { _ = await calendarService.requestAccess() }
+                    }
+                    if newValue { calendarService.refresh() }
+                }
+
+            if calendarEventsEnabled {
+                switch calendarService.authStatus {
+                case .notDetermined:
+                    Button("Grant Calendar access") {
+                        Task { _ = await calendarService.requestAccess() }
+                    }
+                case .denied, .restricted, .writeOnly:
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Calendar access is denied for RollingTodo.")
+                            .font(.editorialItalic(12))
+                            .foregroundStyle(Color.inkSoft)
+                        Button("Open System Settings") { openPrivacySettings() }
+                    }
+                case .fullAccess:
+                    let calendars = calendarService.availableCalendars()
+                    if calendars.isEmpty {
+                        Text("No calendars found on this device.")
+                            .font(.editorialItalic(12))
+                            .foregroundStyle(Color.inkSoft)
+                    } else {
+                        ForEach(calendars, id: \.calendarIdentifier) { cal in
+                            Toggle(isOn: calendarToggleBinding(for: cal)) {
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(Color(cgColor: cal.cgColor ?? CGColor(gray: 0.5, alpha: 1)))
+                                        .frame(width: 8, height: 8)
+                                    Text(cal.title)
+                                }
+                            }
+                        }
+                    }
+                @unknown default:
+                    EmptyView()
+                }
+            }
+
+            Text("Asks for Calendar permission. Calendar selection stays on this device; the on/off toggle syncs across your devices.")
+                .font(.editorialItalic(12))
+                .foregroundStyle(Color.inkSoft)
+        } header: {
+            Text("Calendar Events").eyebrowStyle(tint: Color.inkMuted)
+        }
+    }
+
+    private func calendarToggleBinding(for cal: EKCalendar) -> Binding<Bool> {
+        Binding(
+            get: { calendarService.selectedCalendarIDs.contains(cal.calendarIdentifier) },
+            set: { calendarService.setSelected(cal.calendarIdentifier, $0) }
+        )
+    }
+
+    private func openPrivacySettings() {
+        #if os(macOS)
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+            NSWorkspace.shared.open(url)
+        }
+        #else
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+        #endif
     }
 
     private func buildAndExport() {

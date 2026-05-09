@@ -22,7 +22,8 @@ final class CloudSettingsSync {
         "autoArchiveEnabled",
         "autoArchiveAge",
         "focusDueWindow",
-        "focusPriorityFloor"
+        "focusPriorityFloor",
+        "calendarEventsEnabled"
     ]
 
     private let store = NSUbiquitousKeyValueStore.default
