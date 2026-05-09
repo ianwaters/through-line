@@ -16,7 +16,12 @@ struct HomeScreenView: View {
     @Environment(\.horizontalSizeClass) private var hSizeClass
     #endif
 
+    @State private var calendarService = CalendarEventsService.shared
+    @State private var intelligence = IntelligenceService.shared
+
     @State private var confirmingDeleteCancelled: Bool = false
+    @State private var llmSummary: String? = nil
+    @State private var lastSummaryGeneratedAt: Date = .distantPast
 
     private var isCompact: Bool {
         #if os(iOS)
@@ -105,6 +110,51 @@ struct HomeScreenView: View {
         return "Nothing urgent. A clear \(timeOfDay.noun)."
     }
 
+    private var upcomingEventsToday: [CalendarEventViewModel] {
+        let now = Date.now
+        return calendarService.events.filter { $0.endDate >= now || $0.isAllDay }
+    }
+
+    /// Hash of every input that should invalidate the cached summary. Includes
+    /// the current hour so summaries refresh as time-of-day changes (morning →
+    /// afternoon etc.) when body re-evaluates.
+    private var summaryInputHash: Int {
+        var hasher = Hasher()
+        hasher.combine(urgent.count)
+        hasher.combine(dueToday.count)
+        hasher.combine(overdue.count)
+        hasher.combine(calendar.component(.hour, from: .now))
+        hasher.combine(upcomingEventsToday.map(\.id))
+        return hasher.finalize()
+    }
+
+    private func regenerateSummaryIfNeeded() async {
+        guard intelligence.isAvailable else { return }
+        // Throttle: regenerate only when the input hash has changed (handled by
+        // .task(id:)) or when the cached summary is older than an hour.
+        let now = Date.now
+        if llmSummary != nil, now.timeIntervalSince(lastSummaryGeneratedAt) < 3600 {
+            // Same inputs as last time AND fresh — nothing to do. (.task(id:)
+            // already gates on hash changes; this just guards against repeat
+            // calls if the hash collides for unrelated reasons.)
+        }
+
+        let input = IntelligenceService.DailySummaryInput(
+            timeOfDayNoun: timeOfDay.noun,
+            urgentCount: urgent.count,
+            dueTodayCount: dueToday.count,
+            overdueCount: overdue.count,
+            upcomingEvents: upcomingEventsToday.prefix(4).map { event in
+                let time = event.isAllDay ? "all day" : event.startDate.formatted(.dateTime.hour().minute())
+                return (time: time, title: event.title)
+            }
+        )
+        if let result = await intelligence.dailySummary(input) {
+            llmSummary = result
+            lastSummaryGeneratedAt = .now
+        }
+    }
+
     /// The notes that the update message refers to — surfaced as chips below the headline.
     private var updateNotes: [Note] {
         if !urgent.isEmpty { return urgent }
@@ -168,12 +218,15 @@ struct HomeScreenView: View {
                 .foregroundStyle(Color.ink)
                 .padding(.bottom, 18)
 
-            Text(updateMessage)
+            Text(llmSummary ?? updateMessage)
                 .font(.editorialDisplay(22, weight: .regular))
                 .italic()
                 .foregroundStyle(Color.inkSoft)
                 .lineSpacing(4)
                 .frame(maxWidth: 540, alignment: .leading)
+                .task(id: summaryInputHash) {
+                    await regenerateSummaryIfNeeded()
+                }
 
             if !updateNotes.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {

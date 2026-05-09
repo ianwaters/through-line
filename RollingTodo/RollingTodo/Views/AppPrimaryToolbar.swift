@@ -7,7 +7,9 @@ import SwiftUI
 struct AppPrimaryToolbar: ToolbarContent {
     @Binding var focusModeEnabled: Bool
     let onQuickCapture: () -> Void
+    let onAINote: () -> Void
     let onSettings: () -> Void
+    let intelligenceAvailable: Bool
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
@@ -23,6 +25,14 @@ struct AppPrimaryToolbar: ToolbarContent {
             }
             .keyboardShortcut("k", modifiers: .command)
             .help("Quick Capture (⌘K)")
+
+            if intelligenceAvailable {
+                Button(action: onAINote) {
+                    Label("New Note from Prompt", systemImage: "wand.and.sparkles")
+                }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .help("New Note from Prompt (⇧⌘K)")
+            }
 
             Button(action: onSettings) {
                 Label("Settings", systemImage: "gearshape")

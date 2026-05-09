@@ -11,8 +11,10 @@ struct ContentView: View {
     @State private var noteSelection: UUID?
     @State private var searchText: String = ""
     @State private var unlockSession = UnlockSession()
+    @State private var intelligence = IntelligenceService.shared
     @State private var showingQuickCapture: Bool = false
     @State private var showingSettingsSheet: Bool = false
+    @State private var showingAIComposer: Bool = false
     @AppStorage("focusModeEnabled") private var focusModeEnabled: Bool = false
 
     #if os(macOS)
@@ -72,7 +74,9 @@ struct ContentView: View {
                 AppPrimaryToolbar(
                     focusModeEnabled: $focusModeEnabled,
                     onQuickCapture: { showingQuickCapture = true },
-                    onSettings: openSettingsTapped
+                    onAINote: { showingAIComposer = true },
+                    onSettings: openSettingsTapped,
+                    intelligenceAvailable: intelligence.isAvailable
                 )
             }
             #endif
@@ -112,7 +116,9 @@ struct ContentView: View {
                 AppPrimaryToolbar(
                     focusModeEnabled: $focusModeEnabled,
                     onQuickCapture: { showingQuickCapture = true },
-                    onSettings: openSettingsTapped
+                    onAINote: { showingAIComposer = true },
+                    onSettings: openSettingsTapped,
+                    intelligenceAvailable: intelligence.isAvailable
                 )
             }
             #endif
@@ -122,12 +128,20 @@ struct ContentView: View {
             AppPrimaryToolbar(
                 focusModeEnabled: $focusModeEnabled,
                 onQuickCapture: { showingQuickCapture = true },
-                onSettings: openSettingsTapped
+                onAINote: { showingAIComposer = true },
+                onSettings: openSettingsTapped,
+                intelligenceAvailable: intelligence.isAvailable
             )
         }
         #endif
         .sheet(isPresented: $showingQuickCapture) {
             QuickCaptureView()
+        }
+        .sheet(isPresented: $showingAIComposer) {
+            AINoteComposerView { id in
+                sidebarSelection = .allNotes
+                noteSelection = id
+            }
         }
         .sheet(isPresented: $showingSettingsSheet) {
             NavigationStack {

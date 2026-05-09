@@ -98,6 +98,19 @@ private struct NoteEditorContent: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var savedAt: Date?
     @State private var ticker: Date = .now
+    @State private var intelligence = IntelligenceService.shared
+    @State private var suggestingTitle: Bool = false
+
+    private var titleLooksUnset: Bool {
+        let trimmed = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed == "New Note" || trimmed == "Untitled"
+    }
+
+    private var canSuggestTitle: Bool {
+        intelligence.isAvailable
+            && titleLooksUnset
+            && !note.bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -105,10 +118,28 @@ private struct NoteEditorContent: View {
                 Text(note.modifiedDate.formatted(.dateTime.weekday(.wide).day().month(.wide)))
                     .eyebrowStyle(tint: Color.inkMuted)
 
-                TextField("Untitled", text: $note.title)
-                    .font(.editorialDisplay(34, weight: .semibold))
-                    .foregroundStyle(Color.ink)
-                    .textFieldStyle(.plain)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    TextField("Untitled", text: $note.title)
+                        .font(.editorialDisplay(34, weight: .semibold))
+                        .foregroundStyle(Color.ink)
+                        .textFieldStyle(.plain)
+
+                    if canSuggestTitle {
+                        Button(action: suggestTitle) {
+                            if suggestingTitle {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "wand.and.sparkles")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(suggestingTitle)
+                        .help("Suggest a title from the body")
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 32)
@@ -208,6 +239,17 @@ private struct NoteEditorContent: View {
         try? context.save()
         savedAt = .now
         ticker = .now
+    }
+
+    private func suggestTitle() {
+        guard !suggestingTitle else { return }
+        suggestingTitle = true
+        Task { @MainActor in
+            defer { suggestingTitle = false }
+            if let suggestion = await intelligence.suggestTitle(for: note.bodyMarkdown) {
+                note.title = suggestion
+            }
+        }
     }
 }
 
