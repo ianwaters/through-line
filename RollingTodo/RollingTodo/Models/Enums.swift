@@ -147,6 +147,141 @@ enum ArchiveAge: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum Recurrence: String, CaseIterable, Identifiable, Codable {
+    case none
+    case daily
+    case weekdays
+    case weekly
+    case monthly
+    case yearly
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none: "Doesn't repeat"
+        case .daily: "Every day"
+        case .weekdays: "Every weekday"
+        case .weekly: "Every week"
+        case .monthly: "Every month"
+        case .yearly: "Every year"
+        }
+    }
+
+    var sfSymbol: String {
+        switch self {
+        case .none: "arrow.clockwise"
+        case .daily, .weekdays: "calendar"
+        case .weekly: "calendar.badge.clock"
+        case .monthly, .yearly: "calendar.circle"
+        }
+    }
+
+    func next(after date: Date, calendar: Calendar = .current) -> Date? {
+        switch self {
+        case .none:
+            return nil
+        case .daily:
+            return calendar.date(byAdding: .day, value: 1, to: date)
+        case .weekdays:
+            var candidate = calendar.date(byAdding: .day, value: 1, to: date)
+            while let c = candidate {
+                let weekday = calendar.component(.weekday, from: c)
+                if weekday != 1 && weekday != 7 { return c }
+                candidate = calendar.date(byAdding: .day, value: 1, to: c)
+            }
+            return nil
+        case .weekly:
+            return calendar.date(byAdding: .weekOfYear, value: 1, to: date)
+        case .monthly:
+            return calendar.date(byAdding: .month, value: 1, to: date)
+        case .yearly:
+            return calendar.date(byAdding: .year, value: 1, to: date)
+        }
+    }
+}
+
+enum RecurrenceMode: String, CaseIterable, Identifiable, Codable {
+    case reset
+    case duplicate
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .reset: "Reset this note"
+        case .duplicate: "Duplicate (keep history)"
+        }
+    }
+
+    var sfSymbol: String {
+        switch self {
+        case .reset: "arrow.counterclockwise"
+        case .duplicate: "doc.on.doc"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .reset:
+            "Marking done resets this note and advances its due date for the next occurrence."
+        case .duplicate:
+            "Marking done creates a fresh copy for the next occurrence and keeps this one as history."
+        }
+    }
+}
+
+enum FocusDueWindow: String, CaseIterable, Identifiable, Codable {
+    case today
+    case tomorrow
+    case thisWeek
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .today: "Today (or overdue)"
+        case .tomorrow: "Today or tomorrow"
+        case .thisWeek: "Within 7 days"
+        }
+    }
+
+    func includes(_ date: Date, calendar: Calendar = .current) -> Bool {
+        let startOfToday = calendar.startOfDay(for: .now)
+        let endOfWindow: Date
+        switch self {
+        case .today:
+            endOfWindow = startOfToday
+        case .tomorrow:
+            endOfWindow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday
+        case .thisWeek:
+            endOfWindow = calendar.date(byAdding: .day, value: 7, to: startOfToday) ?? startOfToday
+        }
+        return calendar.startOfDay(for: date) <= endOfWindow
+    }
+}
+
+enum FocusPriorityFloor: String, CaseIterable, Identifiable, Codable {
+    case highOrUrgent
+    case urgent
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .highOrUrgent: "High or Urgent"
+        case .urgent: "Urgent only"
+        }
+    }
+
+    func passes(_ priority: Priority) -> Bool {
+        switch self {
+        case .highOrUrgent: return priority == .high || priority == .urgent
+        case .urgent: return priority == .urgent
+        }
+    }
+}
+
 enum NoteSortOrder: String, CaseIterable, Identifiable, Codable {
     case manual
     case alphabetical

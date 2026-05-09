@@ -21,50 +21,63 @@ struct NoteListView: View {
                 description: Text("The home screen is showing in the detail pane.")
             )
         case .allNotes:
-            FilteredNoteListView(tab: tab, folderID: nil, noteSelection: $noteSelection)
+            FilteredNoteListView(tab: tab, scope: .all, noteSelection: $noteSelection)
                 .id("\(tab.rawValue)-all")
         case .folder(let id):
-            FilteredNoteListView(tab: tab, folderID: id, noteSelection: $noteSelection)
-                .id("\(tab.rawValue)-\(id)")
+            FilteredNoteListView(tab: tab, scope: .folder(id), noteSelection: $noteSelection)
+                .id("\(tab.rawValue)-folder-\(id)")
+        case .tag(let t):
+            FilteredNoteListView(tab: tab, scope: .tag(t), noteSelection: $noteSelection)
+                .id("\(tab.rawValue)-tag-\(t)")
         }
     }
 }
 
 struct FilteredNoteListView: View {
     let tab: AppTab
-    let folderID: UUID?
+    let scope: NoteListScope
     @Binding var noteSelection: UUID?
 
     @Environment(\.modelContext) private var context
     @Query private var notes: [Note]
     @Query private var folderResults: [Folder]
 
-    @State private var renamingNote: Note?
+    @State private var renamingID: UUID?
     @State private var renameText: String = ""
+    @FocusState private var renameFocus: UUID?
+
     @State private var searchText: String = ""
     @State private var sort: NoteSortOrder = .manual
     @AppStorage("dueTodayIsUrgent") private var dueTodayIsUrgent: Bool = false
+    @AppStorage("focusModeEnabled") private var focusModeEnabled: Bool = false
+    @AppStorage("focusDueWindow") private var focusDueWindow: FocusDueWindow = .thisWeek
+    @AppStorage("focusPriorityFloor") private var focusPriorityFloor: FocusPriorityFloor = .highOrUrgent
 
     private var sortKey: String {
-        let f = folderID?.uuidString ?? "all"
-        return "noteSort.\(tab.rawValue).\(f)"
+        let scopeKey: String = switch scope {
+        case .all: "all"
+        case .folder(let id): "folder-\(id.uuidString)"
+        case .tag(let t): "tag-\(t)"
+        }
+        return "noteSort.\(tab.rawValue).\(scopeKey)"
     }
 
-    init(tab: AppTab, folderID: UUID?, noteSelection: Binding<UUID?>) {
+    init(tab: AppTab, scope: NoteListScope, noteSelection: Binding<UUID?>) {
         self.tab = tab
-        self.folderID = folderID
+        self.scope = scope
         self._noteSelection = noteSelection
 
         let archived = tab == .archive
         let predicate: Predicate<Note>
 
-        if let folderID {
+        switch scope {
+        case .folder(let folderID):
             if archived {
                 predicate = #Predicate<Note> { $0.archivedDate != nil && $0.folder?.id == folderID }
             } else {
                 predicate = #Predicate<Note> { $0.archivedDate == nil && $0.folder?.id == folderID }
             }
-        } else {
+        case .all, .tag:
             if archived {
                 predicate = #Predicate<Note> { $0.archivedDate != nil }
             } else {
@@ -74,27 +87,45 @@ struct FilteredNoteListView: View {
 
         self._notes = Query(filter: predicate)
 
-        if let folderID {
+        switch scope {
+        case .folder(let folderID):
             self._folderResults = Query(filter: #Predicate<Folder> { $0.id == folderID })
-        } else {
+        default:
             self._folderResults = Query()
         }
     }
 
-    private var currentFolder: Folder? { folderID == nil ? nil : folderResults.first }
+    private var currentFolder: Folder? {
+        if case .folder = scope { return folderResults.first }
+        return nil
+    }
 
     private var navTitle: String {
-        if let folder = currentFolder {
-            return folder.name.isEmpty ? "Untitled" : folder.name
+        switch scope {
+        case .folder:
+            return currentFolder?.name.isEmpty == false ? currentFolder!.name : "Folder"
+        case .tag(let t):
+            return "#\(t)"
+        case .all:
+            return tab == .archive ? "All Archived" : "All Notes"
         }
-        return tab == .archive ? "All Archived" : "All Notes"
+    }
+
+    private var scopedNotes: [Note] {
+        switch scope {
+        case .tag(let t):
+            return notes.filter { $0.tags?.contains(t) == true }
+        case .all, .folder:
+            return notes
+        }
     }
 
     private var filteredNotes: [Note] {
+        let base = scopedNotes
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return notes }
+        guard !trimmed.isEmpty else { return base }
         let needle = trimmed.lowercased()
-        return notes.filter {
+        return base.filter {
             $0.title.lowercased().contains(needle) ||
             $0.bodyMarkdown.lowercased().contains(needle)
         }
@@ -102,40 +133,61 @@ struct FilteredNoteListView: View {
 
     private var sortedNotes: [Note] {
         let base = filteredNotes
+        let pinned = base.filter(\.isPinned).sorted {
+            ($0.pinnedDate ?? .distantPast) > ($1.pinnedDate ?? .distantPast)
+        }
+        let unpinned = base.filter { !$0.isPinned }
+        return pinned + applySortOrder(unpinned)
+    }
+
+    private var focusActive: Bool {
+        focusModeEnabled && tab != .archive
+    }
+
+    private var displayedNotes: [Note] {
+        guard focusActive else { return sortedNotes }
+        return sortedNotes.filter(passesFocus)
+    }
+
+    private func passesFocus(_ note: Note) -> Bool {
+        if note.isPinned { return true }
+        guard note.todoEnabled else { return false }
+        guard note.status != .done, note.status != .cancelled else { return false }
+        if focusPriorityFloor.passes(note.priority) { return true }
+        if let due = note.dueDate, focusDueWindow.includes(due) { return true }
+        return false
+    }
+
+    private func applySortOrder(_ notes: [Note]) -> [Note] {
         switch sort {
         case .manual:
-            return base.sorted { $0.sortOrder < $1.sortOrder }
+            return notes.sorted { $0.sortOrder < $1.sortOrder }
         case .alphabetical:
-            return base.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            return notes.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         case .priority:
-            return base.sorted(by: priorityOrdering)
+            return notes.sorted(by: priorityOrdering)
         case .dueDate:
-            return base.sorted(by: dueDateOrdering)
+            return notes.sorted(by: dueDateOrdering)
         case .modifiedDate:
-            return base.sorted { $0.modifiedDate > $1.modifiedDate }
+            return notes.sorted { $0.modifiedDate > $1.modifiedDate }
         case .createdDate:
-            return base.sorted { $0.createdDate > $1.createdDate }
+            return notes.sorted { $0.createdDate > $1.createdDate }
         }
     }
 
     var body: some View {
         Group {
-            if sortedNotes.isEmpty {
+            if displayedNotes.isEmpty {
                 emptyState
             } else {
                 List(selection: $noteSelection) {
-                    ForEach(sortedNotes) { note in
-                        NoteRow(note: note)
-                            .tag(note.id)
-                            .contextMenu {
-                                Button("Rename") { startRename(note) }
-                                Button("Duplicate") { duplicate(note) }
-                                Button(note.isArchived ? "Unarchive" : "Archive", systemImage: note.isArchived ? "tray.and.arrow.up" : "archivebox") {
-                                    toggleArchive(note)
-                                }
-                                Divider()
-                                Button("Delete", role: .destructive) { delete(note) }
-                            }
+                    if focusActive {
+                        focusBanner
+                            .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
+                            .listRowBackground(Color.clear)
+                    }
+                    ForEach(displayedNotes) { note in
+                        rowContainer(for: note)
                     }
                     .onMove { offsets, target in
                         guard sort == .manual else { return }
@@ -169,16 +221,82 @@ struct FilteredNoteListView: View {
         }
         .onAppear(perform: loadSort)
         .onChange(of: sort) { _, _ in saveSort() }
-        .alert("Rename Note", isPresented: renameBinding) {
-            TextField("Title", text: $renameText)
-            Button("Cancel", role: .cancel) { renamingNote = nil }
-            Button("Save", action: commitRename)
+        .onChange(of: renameFocus) { oldValue, newValue in
+            if let oldID = oldValue, oldID != newValue, renamingID == oldID {
+                commitRename(forID: oldID)
+            }
         }
     }
 
     @ViewBuilder
+    private func rowContainer(for note: Note) -> some View {
+        Group {
+            if renamingID == note.id {
+                renameRow(for: note)
+            } else {
+                NoteRow(note: note)
+            }
+        }
+        .tag(note.id)
+        .draggable(note.id.uuidString)
+        .contextMenu {
+            Button(note.isPinned ? "Unpin" : "Pin to Top",
+                   systemImage: note.isPinned ? "pin.slash" : "pin.fill") {
+                togglePin(note)
+            }
+            Button("Rename") { startRename(note) }
+            Button("Duplicate") { duplicate(note) }
+            Button(note.isArchived ? "Unarchive" : "Archive", systemImage: note.isArchived ? "tray.and.arrow.up" : "archivebox") {
+                toggleArchive(note)
+            }
+            Divider()
+            Button("Delete", role: .destructive) { delete(note) }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) { delete(note) } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button { toggleArchive(note) } label: {
+                Label(note.isArchived ? "Unarchive" : "Archive",
+                      systemImage: note.isArchived ? "tray.and.arrow.up" : "archivebox")
+            }
+            .tint(.orange)
+        }
+        .swipeActions(edge: .leading) {
+            Button { startRename(note) } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(.blue)
+        }
+    }
+
+    @ViewBuilder
+    private func renameRow(for note: Note) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pencil")
+                .foregroundStyle(.tint)
+                .font(.body)
+                .frame(width: 18)
+            TextField("Title", text: $renameText)
+                .textFieldStyle(.plain)
+                .focused($renameFocus, equals: note.id)
+                .onSubmit { commitRename() }
+                #if os(macOS)
+                .onExitCommand { cancelRename() }
+                #endif
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
     private var emptyState: some View {
-        if !searchText.isEmpty {
+        if focusActive && !sortedNotes.isEmpty {
+            ContentUnavailableView(
+                "Nothing in Focus",
+                systemImage: "scope",
+                description: Text("Nothing's due within \(focusDueWindow.displayName.lowercased()) or at \(focusPriorityFloor.displayName.lowercased()) priority.")
+            )
+        } else if !searchText.isEmpty {
             ContentUnavailableView.search(text: searchText)
         } else if tab == .archive {
             ContentUnavailableView(
@@ -195,11 +313,21 @@ struct FilteredNoteListView: View {
         }
     }
 
-    private var renameBinding: Binding<Bool> {
-        Binding(
-            get: { renamingNote != nil },
-            set: { if !$0 { renamingNote = nil } }
-        )
+    private var focusBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "scope")
+                .foregroundStyle(.tint)
+            Text("Focus")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tint)
+            Text("· \(focusDueWindow.displayName.lowercased()) or \(focusPriorityFloor.displayName.lowercased())")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.accentColor.opacity(0.08))
     }
 
     private func loadSort() {
@@ -239,29 +367,56 @@ struct FilteredNoteListView: View {
         }
     }
 
-    // MARK: - Mutations
-
-    private func createNote() {
-        let next = (notes.map(\.sortOrder).max() ?? -1) + 1
-        let n = Note(title: "New Note", folder: currentFolder, sortOrder: next)
-        context.insert(n)
-        try? context.save()
-        noteSelection = n.id
-        startRename(n)
-    }
+    // MARK: - Rename
 
     private func startRename(_ n: Note) {
         renameText = n.title
-        renamingNote = n
+        renamingID = n.id
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(20))
+            renameFocus = n.id
+        }
+    }
+
+    private func cancelRename() {
+        renamingID = nil
+        renameFocus = nil
     }
 
     private func commitRename() {
-        guard let n = renamingNote else { return }
+        guard let id = renamingID else { return }
+        commitRename(forID: id)
+    }
+
+    private func commitRename(forID id: UUID) {
+        guard let n = notes.first(where: { $0.id == id }) else {
+            renamingID = nil
+            return
+        }
         let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         n.title = trimmed.isEmpty ? "Untitled" : trimmed
         n.modifiedDate = .now
         try? context.save()
-        renamingNote = nil
+        if renamingID == id { renamingID = nil }
+    }
+
+    // MARK: - Mutations
+
+    private func createNote() {
+        let next = (notes.map(\.sortOrder).max() ?? -1) + 1
+        let initialBody: String
+        if case .tag(let t) = scope {
+            initialBody = "#\(t) "
+        } else {
+            initialBody = ""
+        }
+        let n = Note(title: "New Note", folder: currentFolder, sortOrder: next)
+        n.bodyMarkdown = initialBody
+        n.refreshTags()
+        context.insert(n)
+        try? context.save()
+        noteSelection = n.id
+        startRename(n)
     }
 
     private func duplicate(_ original: Note) {
@@ -280,6 +435,11 @@ struct FilteredNoteListView: View {
             newItem.note = copy
         }
         context.insert(copy)
+        try? context.save()
+    }
+
+    private func togglePin(_ n: Note) {
+        n.pinnedDate = n.isPinned ? nil : .now
         try? context.save()
     }
 

@@ -4,6 +4,7 @@ import SwiftData
 struct NoteEditorView: View {
     let noteID: UUID?
     @Query private var noteResults: [Note]
+    @Environment(UnlockSession.self) private var unlockSession
 
     init(noteID: UUID?) {
         self.noteID = noteID
@@ -16,8 +17,13 @@ struct NoteEditorView: View {
 
     var body: some View {
         if let note = noteResults.first {
-            NoteEditorContent(note: note)
-                .id(note.id)
+            if note.isLocked && !unlockSession.isUnlocked(note.id) {
+                LockedNoteView(note: note)
+                    .id(note.id)
+            } else {
+                NoteEditorContent(note: note)
+                    .id(note.id)
+            }
         } else {
             ContentUnavailableView(
                 "No Note Selected",
@@ -28,6 +34,39 @@ struct NoteEditorView: View {
     }
 }
 
+private struct LockedNoteView: View {
+    let note: Note
+    @Environment(UnlockSession.self) private var unlockSession
+    @State private var attempting: Bool = false
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(note.title.isEmpty ? "Locked Note" : note.title, systemImage: "lock.fill")
+        } description: {
+            Text("This note is locked. Unlock with biometrics or your device passcode.")
+        } actions: {
+            Button {
+                Task { await unlock() }
+            } label: {
+                Label(attempting ? "Unlocking…" : "Unlock", systemImage: "lock.open")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(attempting)
+        }
+        .onAppear {
+            Task { await unlock() }
+        }
+    }
+
+    private func unlock() async {
+        guard !attempting else { return }
+        attempting = true
+        defer { attempting = false }
+        let ok = await unlockSession.authenticate(reason: "Unlock \"\(note.title.isEmpty ? "this note" : note.title)\"")
+        if ok { unlockSession.unlock(note.id) }
+    }
+}
+
 private struct NoteEditorContent: View {
     @Bindable var note: Note
     @Environment(\.modelContext) private var context
@@ -35,6 +74,8 @@ private struct NoteEditorContent: View {
     @State private var mode: EditorMode = .edit
     @State private var showInspector: Bool = false
     @State private var saveTask: Task<Void, Never>?
+    @State private var savedAt: Date?
+    @State private var ticker: Date = .now
 
     enum EditorMode: String, CaseIterable, Identifiable {
         case edit, preview, split
@@ -99,7 +140,11 @@ private struct NoteEditorContent: View {
             }
         }
         .toolbar {
-            ToolbarItem {
+            ToolbarItemGroup {
+                if let savedAt {
+                    SavedIndicator(savedAt: savedAt, now: ticker)
+                }
+
                 Picker("Mode", selection: $mode) {
                     ForEach(EditorMode.allCases) { m in
                         Image(systemName: m.sfSymbol).tag(m)
@@ -107,14 +152,19 @@ private struct NoteEditorContent: View {
                     }
                 }
                 .pickerStyle(.segmented)
-            }
-            ToolbarItem(placement: .primaryAction) {
+
                 Button {
                     showInspector.toggle()
                 } label: {
                     Image(systemName: "sidebar.right")
                 }
                 .help("Toggle inspector")
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                ticker = .now
             }
         }
         .inspector(isPresented: $showInspector) {
@@ -140,8 +190,37 @@ private struct NoteEditorContent: View {
     }
 
     private func flushSave() {
+        note.refreshTags()
         note.modifiedDate = .now
         try? context.save()
+        savedAt = .now
+        ticker = .now
+    }
+}
+
+private struct SavedIndicator: View {
+    let savedAt: Date
+    let now: Date
+
+    private var label: String {
+        let elapsed = now.timeIntervalSince(savedAt)
+        if elapsed < 5 { return "Saved" }
+        if elapsed < 60 { return "Saved \(Int(elapsed))s ago" }
+        let minutes = Int(elapsed / 60)
+        if minutes < 60 { return "Saved \(minutes)m ago" }
+        return "Saved \(savedAt.formatted(.dateTime.hour().minute()))"
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .font(.caption)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .help("Last saved \(savedAt.formatted(date: .abbreviated, time: .standard))")
     }
 }
 

@@ -5,6 +5,7 @@ struct TodoInspector: View {
     @Bindable var note: Note
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(UnlockSession.self) private var unlockSession
 
     var body: some View {
         Form {
@@ -14,6 +15,15 @@ struct TodoInspector: View {
                         note.modifiedDate = .now
                         try? context.save()
                     }
+
+                Toggle("Pin to top", isOn: pinnedBinding)
+
+                Button {
+                    Task { await toggleLock() }
+                } label: {
+                    Label(note.isLocked ? "Remove lock" : "Lock note",
+                          systemImage: note.isLocked ? "lock.open" : "lock")
+                }
             }
 
             if note.todoEnabled {
@@ -26,6 +36,31 @@ struct TodoInspector: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+
+                    if note.recurrence != .none {
+                        Label(note.recurrenceMode.explanation, systemImage: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Recurrence") {
+                    Picker("Repeat", selection: recurrenceBinding) {
+                        ForEach(Recurrence.allCases) { r in
+                            Label(r.displayName, systemImage: r.sfSymbol).tag(r)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+
+                    if note.recurrence != .none {
+                        Picker("On completion", selection: recurrenceModeBinding) {
+                            ForEach(RecurrenceMode.allCases) { mode in
+                                Label(mode.displayName, systemImage: mode.sfSymbol).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
                 }
 
                 Section("Priority") {
@@ -44,29 +79,18 @@ struct TodoInspector: View {
                 }
 
                 Section("Due Date") {
+                    DueDatePresets(setDate: { setDue($0) })
+
                     if let due = note.dueDate {
-                        DatePicker("Due", selection: Binding(
+                        DatePicker("Pick", selection: Binding(
                             get: { due },
-                            set: { newValue in
-                                note.dueDate = newValue
-                                note.modifiedDate = .now
-                                try? context.save()
-                            }
+                            set: { setDue($0) }
                         ), displayedComponents: [.date])
-                        .labelsHidden()
 
                         Button("Clear due date", role: .destructive) {
                             note.dueDate = nil
                             note.modifiedDate = .now
                             try? context.save()
-                        }
-                    } else {
-                        Button {
-                            note.dueDate = Calendar.current.startOfDay(for: .now)
-                            note.modifiedDate = .now
-                            try? context.save()
-                        } label: {
-                            Label("Add due date", systemImage: "calendar.badge.plus")
                         }
                     }
                 }
@@ -89,15 +113,109 @@ struct TodoInspector: View {
         .formStyle(.grouped)
     }
 
+    private func toggleLock() async {
+        let reason = note.isLocked
+            ? "Remove lock from \"\(note.title.isEmpty ? "this note" : note.title)\""
+            : "Lock \"\(note.title.isEmpty ? "this note" : note.title)\""
+        let ok = await unlockSession.authenticate(reason: reason)
+        guard ok else { return }
+        note.isLocked.toggle()
+        if !note.isLocked {
+            unlockSession.unlock(note.id)
+        }
+        note.modifiedDate = .now
+        try? context.save()
+    }
+
+    private var pinnedBinding: Binding<Bool> {
+        Binding(
+            get: { note.isPinned },
+            set: { newValue in
+                note.pinnedDate = newValue ? .now : nil
+                try? context.save()
+            }
+        )
+    }
+
+    private func setDue(_ date: Date) {
+        note.dueDate = Calendar.current.startOfDay(for: date)
+        note.modifiedDate = .now
+        try? context.save()
+    }
+
     private var statusBinding: Binding<Status> {
         Binding(
             get: { note.status },
-            set: {
-                note.status = $0
+            set: { newStatus in
+                if newStatus == .done && note.recurrence != .none {
+                    handleDoneWithRecurrence()
+                } else {
+                    note.status = newStatus
+                }
                 note.modifiedDate = .now
                 try? context.save()
             }
         )
+    }
+
+    private var recurrenceBinding: Binding<Recurrence> {
+        Binding(
+            get: { note.recurrence },
+            set: {
+                note.recurrence = $0
+                note.modifiedDate = .now
+                try? context.save()
+            }
+        )
+    }
+
+    private var recurrenceModeBinding: Binding<RecurrenceMode> {
+        Binding(
+            get: { note.recurrenceMode },
+            set: {
+                note.recurrenceMode = $0
+                note.modifiedDate = .now
+                try? context.save()
+            }
+        )
+    }
+
+    private func handleDoneWithRecurrence() {
+        switch note.recurrenceMode {
+        case .reset:
+            note.advanceRecurrence()
+            note.status = .notStarted
+        case .duplicate:
+            duplicateForNextOccurrence()
+            note.status = .done
+        }
+    }
+
+    private func duplicateForNextOccurrence() {
+        let copy = Note(title: note.title, folder: note.folder, sortOrder: note.sortOrder)
+        copy.bodyMarkdown = note.bodyMarkdown
+        copy.todoEnabled = note.todoEnabled
+        copy.priority = note.priority
+        copy.status = .notStarted
+        copy.labelColor = note.labelColor
+        copy.recurrence = note.recurrence
+        copy.recurrenceMode = note.recurrenceMode
+
+        let base = note.dueDate ?? .now
+        copy.dueDate = note.recurrence.next(after: base)
+
+        for item in note.todoItems ?? [] {
+            let newItem = TodoItem(text: item.text, sortOrder: item.sortOrder)
+            newItem.isDone = false
+            context.insert(newItem)
+            newItem.note = copy
+        }
+
+        copy.refreshTags()
+        context.insert(copy)
+
+        // Original becomes history — clear recurrence so it doesn't loop again.
+        note.recurrence = .none
     }
 
     private var priorityBinding: Binding<Priority> {
@@ -120,6 +238,33 @@ struct TodoInspector: View {
                 try? context.save()
             }
         )
+    }
+}
+
+private struct DueDatePresets: View {
+    let setDate: (Date) -> Void
+
+    private var calendar: Calendar { .current }
+
+    private var presets: [(title: String, date: Date)] {
+        let today = calendar.startOfDay(for: .now)
+        return [
+            ("Today", today),
+            ("Tomorrow", calendar.date(byAdding: .day, value: 1, to: today) ?? today),
+            ("Next week", calendar.date(byAdding: .weekOfYear, value: 1, to: today) ?? today)
+        ]
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(presets, id: \.title) { preset in
+                Button(preset.title) { setDate(preset.date) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 2)
     }
 }
 

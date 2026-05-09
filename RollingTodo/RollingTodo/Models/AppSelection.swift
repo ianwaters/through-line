@@ -4,6 +4,13 @@ enum SidebarSelection: Hashable {
     case home
     case allNotes
     case folder(UUID)
+    case tag(String)
+}
+
+enum NoteListScope: Hashable {
+    case all
+    case folder(UUID)
+    case tag(String)
 }
 
 enum AppTab: String, CaseIterable, Identifiable {

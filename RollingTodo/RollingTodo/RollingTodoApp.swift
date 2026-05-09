@@ -20,6 +20,13 @@ struct RollingTodoApp: App {
         Settings {
             SettingsView()
         }
+        .modelContainer(PersistenceController.shared)
+
+        MenuBarExtra("RollingTodo", systemImage: "checklist") {
+            QuickCaptureView()
+                .modelContainer(PersistenceController.shared)
+        }
+        .menuBarExtraStyle(.window)
         #endif
     }
 }

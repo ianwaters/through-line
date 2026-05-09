@@ -7,15 +7,13 @@ struct SidebarView: View {
 
     @Environment(\.modelContext) private var context
     @Query(sort: [SortDescriptor(\Folder.sortOrder)]) private var folders: [Folder]
+    @Query(filter: #Predicate<Note> { $0.archivedDate == nil }) private var activeNotes: [Note]
 
-    @State private var renamingFolder: Folder?
+    @State private var renamingID: UUID?
     @State private var renameText: String = ""
-    @State private var deletingFolder: Folder?
-    @State private var showingSettingsSheet: Bool = false
+    @FocusState private var renameFocus: UUID?
 
-    #if os(macOS)
-    @Environment(\.openSettings) private var openSettings
-    #endif
+    @State private var deletingFolder: Folder?
 
     var body: some View {
         List(selection: $selection) {
@@ -29,7 +27,7 @@ struct SidebarView: View {
                     .tag(SidebarSelection.allNotes)
 
                 ForEach(folders) { folder in
-                    Label(folder.name.isEmpty ? "Untitled" : folder.name, systemImage: "folder")
+                    folderRow(folder)
                         .tag(SidebarSelection.folder(folder.id))
                         .contextMenu {
                             Button("Rename") { startRename(folder) }
@@ -37,8 +35,21 @@ struct SidebarView: View {
                             Divider()
                             Button("Delete", role: .destructive) { deletingFolder = folder }
                         }
+                        .dropDestination(for: String.self) { items, _ in
+                            moveDroppedNotes(noteIDs: items, toFolder: folder)
+                            return true
+                        }
                 }
                 .onMove(perform: moveFolders)
+            }
+
+            if !tagsList.isEmpty {
+                Section("Tags") {
+                    ForEach(tagsList, id: \.self) { tag in
+                        Label("#\(tag)", systemImage: "tag")
+                            .tag(SidebarSelection.tag(tag))
+                    }
+                }
             }
         }
         .navigationTitle("RollingTodo")
@@ -52,35 +63,14 @@ struct SidebarView: View {
             .labelsHidden()
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(.bar)
         }
         .toolbar {
-            ToolbarItemGroup {
-                Button(action: openSettingsTapped) {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .help("Settings")
-
+            ToolbarItem {
                 Button(action: createFolder) {
                     Label("New Folder", systemImage: "folder.badge.plus")
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             }
-        }
-        .sheet(isPresented: $showingSettingsSheet) {
-            NavigationStack {
-                SettingsView()
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showingSettingsSheet = false }
-                        }
-                    }
-            }
-        }
-        .alert("Rename Folder", isPresented: renameBinding) {
-            TextField("Folder name", text: $renameText)
-            Button("Cancel", role: .cancel) { renamingFolder = nil }
-            Button("Save", action: commitRename)
         }
         .confirmationDialog(
             deletingFolder.map { "Delete \"\($0.name.isEmpty ? "Untitled" : $0.name)\"?" } ?? "",
@@ -98,13 +88,43 @@ struct SidebarView: View {
                 Text("This can't be undone.")
             }
         }
+        .onChange(of: renameFocus) { oldValue, newValue in
+            if let oldID = oldValue, oldID != newValue, renamingID == oldID {
+                commitRename(forID: oldID)
+            }
+        }
     }
 
-    private var renameBinding: Binding<Bool> {
-        Binding(
-            get: { renamingFolder != nil },
-            set: { if !$0 { renamingFolder = nil } }
-        )
+    @ViewBuilder
+    private func folderRow(_ folder: Folder) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "folder")
+                .foregroundStyle(.tint)
+                .frame(width: 16)
+
+            if renamingID == folder.id {
+                TextField("Folder name", text: $renameText)
+                    .textFieldStyle(.plain)
+                    .focused($renameFocus, equals: folder.id)
+                    .onSubmit { commitRename() }
+                    #if os(macOS)
+                    .onExitCommand { cancelRename() }
+                    #endif
+            } else {
+                Text(folder.name.isEmpty ? "Untitled" : folder.name)
+            }
+        }
+        .onTapGesture(count: 2) {
+            startRename(folder)
+        }
+    }
+
+    private var tagsList: [String] {
+        var set = Set<String>()
+        for n in activeNotes {
+            for t in n.tags ?? [] { set.insert(t) }
+        }
+        return set.sorted()
     }
 
     private var deleteBinding: Binding<Bool> {
@@ -112,14 +132,6 @@ struct SidebarView: View {
             get: { deletingFolder != nil },
             set: { if !$0 { deletingFolder = nil } }
         )
-    }
-
-    private func openSettingsTapped() {
-        #if os(macOS)
-        openSettings()
-        #else
-        showingSettingsSheet = true
-        #endif
     }
 
     private func createFolder() {
@@ -131,17 +143,34 @@ struct SidebarView: View {
         startRename(f)
     }
 
-    private func startRename(_ f: Folder) {
-        renameText = f.name
-        renamingFolder = f
+    private func startRename(_ folder: Folder) {
+        renameText = folder.name
+        renamingID = folder.id
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(20))
+            renameFocus = folder.id
+        }
+    }
+
+    private func cancelRename() {
+        renamingID = nil
+        renameFocus = nil
     }
 
     private func commitRename() {
-        guard let f = renamingFolder else { return }
+        guard let id = renamingID else { return }
+        commitRename(forID: id)
+    }
+
+    private func commitRename(forID id: UUID) {
+        guard let f = folders.first(where: { $0.id == id }) else {
+            renamingID = nil
+            return
+        }
         let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         f.name = trimmed.isEmpty ? "Untitled" : trimmed
         try? context.save()
-        renamingFolder = nil
+        if renamingID == id { renamingID = nil }
     }
 
     private func duplicate(_ original: Folder) {
@@ -165,6 +194,18 @@ struct SidebarView: View {
         reordered.move(fromOffsets: offsets, toOffset: target)
         for (i, f) in reordered.enumerated() {
             f.sortOrder = i
+        }
+        try? context.save()
+    }
+
+    private func moveDroppedNotes(noteIDs: [String], toFolder folder: Folder) {
+        let uuids = noteIDs.compactMap(UUID.init(uuidString:))
+        guard !uuids.isEmpty else { return }
+        let descriptor = FetchDescriptor<Note>(predicate: #Predicate { uuids.contains($0.id) })
+        guard let notes = try? context.fetch(descriptor) else { return }
+        for n in notes {
+            n.folder = folder
+            n.modifiedDate = .now
         }
         try? context.save()
     }
