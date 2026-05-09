@@ -2,11 +2,26 @@ import SwiftUI
 
 /// Editorial empty-state view. Replaces ContentUnavailableView in places where
 /// we want the app's typographic voice to come through.
-struct EditorialEmpty: View {
+struct EditorialEmpty<Accessory: View>: View {
     let eyebrow: String
     let title: String
     let detail: String
     let symbol: String
+    let accessory: Accessory
+
+    init(
+        eyebrow: String,
+        title: String,
+        detail: String,
+        symbol: String,
+        @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+    ) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.detail = detail
+        self.symbol = symbol
+        self.accessory = accessory()
+    }
 
     var body: some View {
         VStack(spacing: 18) {
@@ -34,6 +49,8 @@ struct EditorialEmpty: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 280)
             }
+
+            accessory
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)

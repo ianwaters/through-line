@@ -316,14 +316,7 @@ struct FilteredNoteListView: View {
                 detail: "Try a different word.",
                 symbol: "magnifyingglass"
             )
-        } else {
-            EditorialEmpty(
-                eyebrow: "Notes",
-                title: "A blank page",
-                detail: "Press ⌘N to begin.",
-                symbol: "doc.text"
-            )
-        }
+        } 
     }
 
     private var focusBanner: some View {

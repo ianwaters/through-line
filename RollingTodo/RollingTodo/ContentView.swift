@@ -57,9 +57,19 @@ struct ContentView: View {
                 EditorialEmpty(
                     eyebrow: "Editor",
                     title: "Choose a note",
-                    detail: "Pick something from the list, or press ⌘N to start fresh.",
+                    detail: "Pick something from the list, or start fresh.",
                     symbol: "doc.text"
-                )
+                ) {
+                    Button(action: createNewNote) {
+                        Label("New Note", systemImage: "square.and.pencil")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut("n", modifiers: .command)
+                    .padding(.top, 6)
+                }
             }
         }
         .toolbar {
@@ -130,6 +140,27 @@ struct ContentView: View {
         #else
         showingSettingsSheet = true
         #endif
+    }
+
+    private func createNewNote() {
+        let activePredicate = #Predicate<Note> { $0.archivedDate == nil }
+        let existing = (try? context.fetch(FetchDescriptor<Note>(predicate: activePredicate))) ?? []
+        let next = (existing.map(\.sortOrder).max() ?? -1) + 1
+
+        var folder: Folder? = nil
+        var initialBody = ""
+        if case .folder(let folderID) = sidebarSelection {
+            folder = (try? context.fetch(FetchDescriptor<Folder>(predicate: #Predicate { $0.id == folderID })))?.first
+        } else if case .tag(let tag) = sidebarSelection {
+            initialBody = "#\(tag) "
+        }
+
+        let note = Note(title: "New Note", folder: folder, sortOrder: next)
+        note.bodyMarkdown = initialBody
+        note.refreshTags()
+        context.insert(note)
+        try? context.save()
+        noteSelection = note.id
     }
 }
 
