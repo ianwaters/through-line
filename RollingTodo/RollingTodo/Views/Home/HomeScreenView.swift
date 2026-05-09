@@ -20,8 +20,14 @@ struct HomeScreenView: View {
     @State private var intelligence = IntelligenceService.shared
 
     @State private var confirmingDeleteCancelled: Bool = false
-    @State private var llmSummary: String? = nil
+    @State private var summaryState: SummaryState = .pending
     @State private var lastSummaryGeneratedAt: Date = .distantPast
+
+    private enum SummaryState: Equatable {
+        case pending             // never tried — assume AI is coming
+        case ready(String)       // got a summary
+        case useFallback         // tried and failed, OR confirmed AI unavailable
+    }
 
     private var isCompact: Bool {
         #if os(iOS)
@@ -128,15 +134,36 @@ struct HomeScreenView: View {
         return hasher.finalize()
     }
 
+    @ViewBuilder
+    private var summaryView: some View {
+        switch summaryState {
+        case .pending:
+            // Initial state: assume AI is on the way; never preemptively flash
+            // the rule-based fallback. If AI turns out to be unavailable, the
+            // .task transitions us to .useFallback explicitly.
+            ComposingSummaryLine()
+        case .ready(let text):
+            Text(text)
+        case .useFallback:
+            Text(updateMessage)
+        }
+    }
+
     private func regenerateSummaryIfNeeded() async {
-        guard intelligence.isAvailable else { return }
-        // Throttle: regenerate only when the input hash has changed (handled by
-        // .task(id:)) or when the cached summary is older than an hour.
-        let now = Date.now
-        if llmSummary != nil, now.timeIntervalSince(lastSummaryGeneratedAt) < 3600 {
-            // Same inputs as last time AND fresh — nothing to do. (.task(id:)
-            // already gates on hash changes; this just guards against repeat
-            // calls if the hash collides for unrelated reasons.)
+        // Debounce: wait for inputs to stabilize before kicking off model work.
+        // SwiftData @Query results and CalendarEventsService.events often
+        // arrive a few hundred ms after view appear; without this, we'd
+        // generate twice (once with empty data, once with the real data) and
+        // the second result would overwrite the first.
+        try? await Task.sleep(for: .milliseconds(700))
+        if Task.isCancelled { return }
+
+        guard intelligence.isAvailable else {
+            // Confirmed unavailable — flip to fallback explicitly.
+            if case .ready = summaryState { /* keep cached */ } else {
+                summaryState = .useFallback
+            }
+            return
         }
 
         let input = IntelligenceService.DailySummaryInput(
@@ -149,9 +176,19 @@ struct HomeScreenView: View {
                 return (time: time, title: event.title)
             }
         )
-        if let result = await intelligence.dailySummary(input) {
-            llmSummary = result
+        let result = await intelligence.dailySummary(input)
+        // Foundation Models doesn't honour cancellation mid-generation, so a
+        // stale completion can land here even after .task(id:) cancelled us.
+        // Drop it so a newer task's result wins.
+        if Task.isCancelled { return }
+
+        if let result {
+            summaryState = .ready(result)
             lastSummaryGeneratedAt = .now
+        } else if case .ready = summaryState {
+            // Regeneration failed but we have a cached summary — keep showing it.
+        } else {
+            summaryState = .useFallback
         }
     }
 
@@ -218,12 +255,13 @@ struct HomeScreenView: View {
                 .foregroundStyle(Color.ink)
                 .padding(.bottom, 18)
 
-            Text(llmSummary ?? updateMessage)
+            summaryView
                 .font(.editorialDisplay(22, weight: .regular))
                 .italic()
                 .foregroundStyle(Color.inkSoft)
                 .lineSpacing(4)
                 .frame(maxWidth: 540, alignment: .leading)
+                .animation(.easeInOut(duration: 0.4), value: summaryState)
                 .task(id: summaryInputHash) {
                     await regenerateSummaryIfNeeded()
                 }
@@ -495,4 +533,21 @@ private struct HomepageNoteSection: View {
         HomeScreenView()
     }
     .modelContainer(PersistenceController.preview)
+}
+
+/// A pulsing "Composing your summary…" line shown while the LLM generates the
+/// daily summary on first appear. Pulses opacity to signal activity without
+/// using a spinner (which would clash with the editorial typography).
+private struct ComposingSummaryLine: View {
+    @State private var pulse: Bool = false
+
+    var body: some View {
+        Text("Composing your summary…")
+            .opacity(pulse ? 0.45 : 0.85)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+    }
 }

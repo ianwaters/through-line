@@ -9,14 +9,42 @@ import FoundationModels
 final class IntelligenceService {
     static let shared = IntelligenceService()
 
-    private(set) var isAvailable: Bool = false
+    private(set) var availability: SystemLanguageModel.Availability = .unavailable(.modelNotReady)
+
+    var isAvailable: Bool {
+        if case .available = availability { return true }
+        return false
+    }
+
+    /// Human-readable note explaining why intelligence isn't available, or nil
+    /// when it is. Surfaced in Settings so users can self-diagnose missing
+    /// AI affordances.
+    var availabilityNote: String? {
+        switch availability {
+        case .available:
+            return nil
+        case .unavailable(let reason):
+            switch reason {
+            case .deviceNotEligible:
+                return "This device doesn't support Apple Intelligence."
+            case .appleIntelligenceNotEnabled:
+                return "Apple Intelligence is turned off. Enable it in System Settings → Apple Intelligence & Siri."
+            case .modelNotReady:
+                return "Apple Intelligence is still preparing. Model assets may be downloading — check back in a few minutes."
+            @unknown default:
+                return "Apple Intelligence isn't available on this device."
+            }
+        @unknown default:
+            return "Apple Intelligence status couldn't be determined."
+        }
+    }
 
     private init() {
         refreshAvailability()
     }
 
     func refreshAvailability() {
-        isAvailable = SystemLanguageModel.default.isAvailable
+        availability = SystemLanguageModel.default.availability
     }
 
     // MARK: - Smart title
@@ -66,9 +94,9 @@ final class IntelligenceService {
         }
 
         let prompt = """
-            Synthesise a single calm sentence summarising the user's \(input.timeOfDayNoun). \
-            Maximum 18 words. Editorial in tone, no emoji, no exclamation marks. \
-            If everything is quiet, say so plainly.
+            Synthesise a single sentence summarising the user's \(input.timeOfDayNoun). \
+            Maximum 24 words. Editorial in tone, no emoji, no exclamation marks. \
+            If everything is quiet, say so. Events are distinct. Use the present tense.
 
             Facts to weave in (omit any that are zero/empty):
             - Urgent todos: \(input.urgentCount)

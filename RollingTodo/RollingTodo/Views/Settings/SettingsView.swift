@@ -21,6 +21,7 @@ struct SettingsView: View {
     @AppStorage("calendarEventsEnabled") private var calendarEventsEnabled: Bool = false
 
     @State private var calendarService = CalendarEventsService.shared
+    @State private var intelligence = IntelligenceService.shared
 
     @State private var exportDocument: ExportDocument?
     @State private var showExporter: Bool = false
@@ -43,6 +44,8 @@ struct SettingsView: View {
             }
 
             calendarEventsSection
+
+            intelligenceStatusSection
 
             Section {
                 Picker("Due within", selection: $focusDueWindow) {
@@ -176,6 +179,41 @@ struct SettingsView: View {
             get: { calendarService.selectedCalendarIDs.contains(cal.calendarIdentifier) },
             set: { calendarService.setSelected(cal.calendarIdentifier, $0) }
         )
+    }
+
+    @ViewBuilder
+    private var intelligenceStatusSection: some View {
+        Section {
+            HStack(alignment: .top, spacing: 10) {
+                Circle()
+                    .fill(intelligence.isAvailable ? Color.editorialSage : Color.editorialAmber)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 5)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(intelligence.isAvailable ? "Apple Intelligence ready" : "Apple Intelligence unavailable")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.ink)
+                    if let note = intelligence.availabilityNote {
+                        Text(note)
+                            .font(.editorialItalic(12))
+                            .foregroundStyle(Color.inkSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("Smart title, daily summary, and AI note generation are enabled.")
+                            .font(.editorialItalic(12))
+                            .foregroundStyle(Color.inkSoft)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Button("Re-check") { intelligence.refreshAvailability() }
+                .font(.system(size: 12))
+        } header: {
+            Text("Apple Intelligence").eyebrowStyle(tint: Color.inkMuted)
+        }
     }
 
     private func openPrivacySettings() {
