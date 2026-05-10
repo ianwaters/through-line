@@ -30,6 +30,10 @@ enum SchemaSeeder {
         let folder = Folder(name: seedMarker, sortOrder: 9_999)
         context.insert(folder)
 
+        // Primary seed note — stays visible in the folder so the delete-folder
+        // confirmation dialog ("delete folder + 1 note") matches what the user
+        // can actually see in the UI. Sets every optional field *except*
+        // `archivedDate` (which hides notes from the main list).
         let note = Note(title: seedMarker, folder: folder, sortOrder: 9_999)
         note.bodyMarkdown = "Schema seed — safe to delete after CloudKit deploy. #seed"
         note.todoEnabled = true
@@ -38,7 +42,6 @@ enum SchemaSeeder {
         note.labelColor = .red
         note.dueDate = .now
         note.pinnedDate = .now
-        note.archivedDate = .now
         note.recurrence = .daily
         note.recurrenceMode = .duplicate
         note.isLocked = true
@@ -49,6 +52,17 @@ enum SchemaSeeder {
         item.isDone = true
         item.note = note
         context.insert(item)
+
+        // Stub purely to register `CD_archivedDate` in CloudKit — the field
+        // only materialises when *some* record uploads with a non-nil value,
+        // and the primary seed note above can't carry it without going
+        // invisible in the main notes list. Tagged with the same marker so
+        // cleanup picks it up.
+        let archivedStub = Note(title: seedMarker, folder: nil, sortOrder: 10_000)
+        archivedStub.bodyMarkdown = "Archived schema-seed stub. Safe to delete."
+        archivedStub.archivedDate = .now
+        archivedStub.tags = ["seed"]
+        context.insert(archivedStub)
 
         let homepageDescriptor = FetchDescriptor<HomepageNote>()
         let existingHomepage = (try? context.fetch(homepageDescriptor)) ?? []
@@ -65,7 +79,7 @@ enum SchemaSeeder {
         }
 
         let extras = didCreateHomepage ? " + HomepageNote" : ""
-        let saveSummary = "Saved seed records (Folder + Note + TodoItem\(extras))."
+        let saveSummary = "Saved seed records (Folder + Note + TodoItem + archived-stub Note\(extras))."
 
         // Poll the CloudSyncMonitor for export confirmation. We can't observe
         // an `@Observable` from a non-View context, so polling is the simplest

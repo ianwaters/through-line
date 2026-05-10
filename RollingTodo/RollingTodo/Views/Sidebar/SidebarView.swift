@@ -190,8 +190,29 @@ struct SidebarView: View {
         if case .folder(let id) = selection, id == f.id {
             selection = .allNotes
         }
-        context.delete(f)
+        // Batch-delete grandchildren → children → parent. SwiftData's `.cascade`
+        // rule asserts in `ModelSnapshot.swift:46` whenever the cascade walk
+        // touches an unmaterialized CloudKit-backed child, and a folder that
+        // looks empty locally can still own notes that haven't been faulted in.
+        // Per-instance `context.delete(item)` hits the same path. The batch
+        // `delete(model:where:)` API writes straight to the store and never
+        // builds per-instance snapshots.
+        //
+        // A two-level optional chain in `#Predicate` (e.g. `$0.note?.folder?.id`)
+        // compiles to a TERNARY that Core Data refuses at runtime
+        // ("Unsupported function expression TERNARY(...)"). So we walk it in
+        // two steps: fetch the note IDs in this folder, then batch-delete
+        // TodoItems per note via the single-level chain that works.
+        let folderID = f.id
         try? context.save()
+
+        let notesDescriptor = FetchDescriptor<Note>(predicate: #Predicate { $0.folder?.id == folderID })
+        let noteIDs = ((try? context.fetch(notesDescriptor)) ?? []).map(\.id)
+        for nid in noteIDs {
+            try? context.delete(model: TodoItem.self, where: #Predicate { $0.note?.id == nid })
+        }
+        try? context.delete(model: Note.self, where: #Predicate { $0.folder?.id == folderID })
+        try? context.delete(model: Folder.self, where: #Predicate { $0.id == folderID })
         deletingFolder = nil
     }
 
