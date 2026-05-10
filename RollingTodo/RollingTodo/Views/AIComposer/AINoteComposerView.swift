@@ -61,7 +61,9 @@ struct AINoteComposerView: View {
                         .disabled(!hasDraft || isGenerating)
                 }
             }
+            #if os(macOS)
             .frame(minWidth: 480, minHeight: 520)
+            #endif
             .onAppear { promptFocused = true }
             .onDisappear { streamTask?.cancel() }
         }
@@ -71,35 +73,35 @@ struct AINoteComposerView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("What should the note be about?")
                 .eyebrowStyle()
-            HStack(alignment: .top, spacing: 8) {
-                TextField(
-                    "e.g. \"20-minute weekly 1:1 coaching template between me (coach) and my senior developer\"",
-                    text: $prompt,
-                    axis: .vertical
-                )
-                .lineLimit(2...6)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15, design: .serif))
-                .focused($promptFocused)
-                .onSubmit { generate() }
-                .padding(10)
-                .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.inkHairline, lineWidth: 0.5)
-                )
 
-                Button(action: generate) {
-                    Label(isGenerating ? "Generating…" : "Generate",
-                          systemImage: isGenerating ? "stop.circle" : "wand.and.sparkles")
-                        .labelStyle(.titleAndIcon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!canGenerate && !isGenerating)
+            TextField(
+                "e.g. \"20-minute weekly 1:1 coaching template between me (coach) and my senior developer\"",
+                text: $prompt,
+                axis: .vertical
+            )
+            .lineLimit(2...6)
+            .textFieldStyle(.plain)
+            .font(.system(size: 15, design: .serif))
+            .focused($promptFocused)
+            .onSubmit { generate() }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.inkHairline, lineWidth: 0.5)
+            )
+
+            Button(action: generate) {
+                Label(isGenerating ? "Generating…" : "Generate",
+                      systemImage: isGenerating ? "stop.circle" : "wand.and.sparkles")
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
             }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canGenerate && !isGenerating)
 
             if let errorMessage {
                 Text(errorMessage)

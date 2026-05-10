@@ -93,7 +93,9 @@ struct QuickCaptureView: View {
             }
         }
         .padding(20)
+        #if os(macOS)
         .frame(minWidth: 380, idealWidth: 400)
+        #endif
         .onAppear { titleFocus = true }
     }
 

@@ -106,7 +106,9 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
+        #if os(macOS)
         .frame(minWidth: 460, minHeight: 480)
+        #endif
         .fileExporter(
             isPresented: $showExporter,
             document: exportDocument,
