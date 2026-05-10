@@ -134,7 +134,7 @@ final class IntelligenceService {
             let listed = input.upcomingEvents
                 .prefix(4)
                 .map { "\($0.time) \($0.title)" }
-                .joined(separator: "; ")
+                .joined(separator: ".\n")
             eventsLine = "upcoming events: \(listed)"
         }
 
