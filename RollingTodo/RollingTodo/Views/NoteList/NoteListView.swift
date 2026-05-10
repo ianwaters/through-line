@@ -571,16 +571,32 @@ struct FilteredNoteListView: View {
 
     private func delete(_ n: Note) {
         if noteSelection == n.id { noteSelection = nil }
-        context.delete(n)
+        deleteNoteCascade(n)
         try? context.save()
     }
 
     private func deleteNotes(at offsets: IndexSet) {
         for i in offsets {
             if noteSelection == sortedNotes[i].id { noteSelection = nil }
-            context.delete(sortedNotes[i])
+            deleteNoteCascade(sortedNotes[i])
         }
         try? context.save()
+    }
+
+    // SwiftData crashes deleting a Note whose TodoItems are still in
+    // `_FullFutureBackingData` state — CloudKit-known but not materialized
+    // into memory. ModelSnapshot.swift:46 asserts on that backing variant.
+    // The cascade walk hits it; `context.delete(item)` hits it; and even
+    // `context.delete(parent)` hits it because deleting the parent
+    // snapshots its in-memory relationship references too. The batch-delete
+    // API writes straight to the persistent store without per-instance
+    // snapshots, so it doesn't care about the load state — we use it for
+    // both children and parent.
+    private func deleteNoteCascade(_ n: Note) {
+        let noteID = n.id
+        try? context.save()
+        try? context.delete(model: TodoItem.self, where: #Predicate { $0.note?.id == noteID })
+        try? context.delete(model: Note.self, where: #Predicate { $0.id == noteID })
     }
 
     private func moveNotes(from offsets: IndexSet, to target: Int) {
