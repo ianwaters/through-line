@@ -219,11 +219,16 @@ private struct NoteEditorContent: View {
             }
         }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                if let savedAt {
+            #if os(macOS)
+            // SavedIndicator is mac-only — on iOS it crowds the nav bar and
+            // pushes the inspector toggle into the unreliable "…" overflow.
+            if let savedAt {
+                ToolbarItem(placement: .primaryAction) {
                     SavedIndicator(savedAt: savedAt, now: ticker)
                 }
-
+            }
+            #endif
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     showInspector.toggle()
                 } label: {

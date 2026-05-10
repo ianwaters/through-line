@@ -41,6 +41,13 @@ struct ContentView: View {
             sidebarSelection = .allNotes
             noteSelection = id
         }
+        .modifier(IOSPrimaryToolbarFallback(
+            focusModeEnabled: $focusModeEnabled,
+            intelligenceAvailable: intelligence.isAvailable,
+            onQuickCapture: { showingQuickCapture = true },
+            onAINote: { showingAIComposer = true },
+            onSettings: openSettingsTapped
+        ))
     }
 
     var body: some View {
