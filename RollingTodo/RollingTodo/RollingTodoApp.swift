@@ -22,6 +22,24 @@ struct RollingTodoApp: App {
             ContentView()
         }
         .modelContainer(PersistenceController.shared)
+        #if DEBUG && os(macOS)
+        .commands {
+            CommandMenu("Debug") {
+                Button("Seed CloudKit Schema…") {
+                    Task { @MainActor in
+                        let result = await SchemaSeeder.seed(into: PersistenceController.shared.mainContext)
+                        print("[SchemaSeeder] \(result)")
+                        SchemaDebugAlerts.show(title: "Schema seed result", message: result)
+                    }
+                }
+                Button("Remove Schema Seed Records") {
+                    let result = SchemaSeeder.cleanup(from: PersistenceController.shared.mainContext)
+                    print("[SchemaSeeder] \(result)")
+                    SchemaDebugAlerts.show(title: "Schema seed cleanup", message: result)
+                }
+            }
+        }
+        #endif
 
         #if os(macOS)
         Settings {
