@@ -79,7 +79,7 @@ struct AINoteComposerView: View {
                 text: $prompt,
                 axis: .vertical
             )
-            .lineLimit(2...6)
+            .lineLimit(1...6)
             .textFieldStyle(.plain)
             .font(.system(size: 15, design: .serif))
             .focused($promptFocused)
