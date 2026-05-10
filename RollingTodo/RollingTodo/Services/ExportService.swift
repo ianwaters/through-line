@@ -44,7 +44,7 @@ enum ExportService {
         return f
     }()
 
-    private static func markdown(for note: Note) -> String {
+    static func markdown(for note: Note) -> String {
         var lines: [String] = ["---"]
         lines.append("title: \(yamlValue(note.title))")
         lines.append("created: \(isoFormatter.string(from: note.createdDate))")

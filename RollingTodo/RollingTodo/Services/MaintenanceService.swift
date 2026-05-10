@@ -32,7 +32,7 @@ final class MaintenanceService {
         try? context.save()
     }
 
-    private func rescheduleOverdue(context: ModelContext) {
+    func rescheduleOverdue(context: ModelContext) {
         let cal = Calendar.current
         let startOfToday = cal.startOfDay(for: .now)
         let descriptor = FetchDescriptor<Note>(predicate: #Predicate {
@@ -53,7 +53,7 @@ final class MaintenanceService {
 
     /// Auto-archives inactive *todo* notes only. Pure reference/markdown notes are never
     /// auto-archived — only notes the user has flagged as todos can age out.
-    private func archiveInactive(context: ModelContext, age: ArchiveAge) {
+    func archiveInactive(context: ModelContext, age: ArchiveAge) {
         guard let cutoff = Calendar.current.date(byAdding: .day, value: -age.days, to: .now) else { return }
         let descriptor = FetchDescriptor<Note>(predicate: #Predicate {
             $0.archivedDate == nil && $0.todoEnabled && $0.modifiedDate < cutoff
