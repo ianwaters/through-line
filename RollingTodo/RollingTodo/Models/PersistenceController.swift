@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 enum PersistenceController {
-    static let cloudContainerID = "iCloud.com.ianwaters.RollingTodo4"
+    static let cloudContainerID = "iCloud.com.ianwaters.RollingTodo4.v2"
 
     static let shared: ModelContainer = {
         let schema = Schema([

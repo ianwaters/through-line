@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import os
 
 /// Wraps Apple's on-device Foundation Models. Singleton, MainActor, @Observable
 /// so views can hide AI affordances on devices that don't support Apple
@@ -51,7 +52,15 @@ final class IntelligenceService {
     }
 
     private init() {
-        refreshAvailability()
+        // Defer the availability read to a Task — `SystemLanguageModel.default`
+        // can block on first access while the FoundationModels service
+        // registers the app's entitlement, and the singleton is constructed
+        // on the main actor during view init. A long block here is one of
+        // the candidates for a launch watchdog termination on TestFlight
+        // builds.
+        Task { @MainActor [weak self] in
+            self?.refreshAvailability()
+        }
     }
 
     func refreshAvailability() {
@@ -137,6 +146,14 @@ final class IntelligenceService {
     /// Returns a daily summary for `input`, hitting the cache or joining an
     /// in-flight task when possible. `hash` should uniquely identify the
     /// input set the caller cares about (urgent counts, events, time-of-day).
+    ///
+    /// The model call is raced against an 8-second wall-clock timeout. On
+    /// some configurations (notably TestFlight builds on iOS) Foundation
+    /// Models has been observed to hang indefinitely inside `respond(to:)`,
+    /// which previously left the home screen stuck on
+    /// "Composing your summary…" forever. The timeout guarantees the caller
+    /// sees `nil` within 8 seconds in the worst case, so the view can fall
+    /// back to the rule-based summary.
     func dailySummary(_ input: DailySummaryInput, hash: Int) async -> String? {
         if let cached = cachedSummary, cached.hash == hash {
             return cached.text
@@ -152,7 +169,18 @@ final class IntelligenceService {
             await self?.generateDailySummary(input)
         }
         summaryTask = (hash, task)
-        let result = await task.value
+
+        let result = await Self.firstResult(timeoutSeconds: 8) {
+            await task.value
+        }
+        if result == nil {
+            // Foundation Models doesn't actually cancel mid-generation, but
+            // we cancel anyway so the bookkeeping is honest. The stale
+            // completion will be dropped by the hash check below if it
+            // eventually lands.
+            task.cancel()
+            Self.summaryTimeoutLogger.error("dailySummary timed out after 8s; falling back")
+        }
         if summaryTask?.hash == hash {
             summaryTask = nil
             if let result {
@@ -160,6 +188,27 @@ final class IntelligenceService {
             }
         }
         return result
+    }
+
+    private static let summaryTimeoutLogger = Logger(subsystem: "com.ianwaters.RollingTodo4", category: "intelligence")
+
+    /// Race a producer against a wall-clock timeout. Returns `nil` if the
+    /// timeout wins. The producer's task is *not* cancelled here — callers
+    /// should cancel separately if they want to stop further work.
+    private static func firstResult(
+        timeoutSeconds: Double,
+        producer: @escaping @Sendable () async -> String?
+    ) async -> String? {
+        await withTaskGroup(of: String?.self) { group in
+            group.addTask { await producer() }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(timeoutSeconds))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
     }
 
     private func generateDailySummary(_ input: DailySummaryInput) async -> String? {

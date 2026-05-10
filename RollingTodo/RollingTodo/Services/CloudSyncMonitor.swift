@@ -1,6 +1,7 @@
 import CloudKit
 import CoreData
 import Foundation
+import Security
 import os
 
 #if os(macOS)
@@ -45,6 +46,11 @@ final class CloudSyncMonitor {
     /// Apple ID at a glance. Nil while unknown / no account.
     private(set) var syncID: String?
 
+    /// The full user record name (not just the last 6 chars). For
+    /// character-level cross-device comparison when the truncated `syncID`
+    /// looks the same on two devices but you want to be certain.
+    private(set) var fullSyncID: String?
+
     /// Raw, copyable error dump for support / self-diagnosis. Populated on every
     /// `.failed` transition. Includes domain, code, userInfo digest, and the
     /// first few child errors of any partial-failure.
@@ -72,6 +78,38 @@ final class CloudSyncMonitor {
     /// CKContainer round-trip; nil when iCloud is signed out entirely.
     private(set) var hasUbiquityIdentity: Bool = false
 
+    /// Container identifiers this binary is *entitled* to access — read from
+    /// the embedded `com.apple.developer.icloud-container-identifiers`
+    /// entitlement. If the configured container isn't in this list, the OS
+    /// will silently reject record-level operations even though setup
+    /// succeeds. This is the smoking gun for "Xcode build syncs, TestFlight
+    /// build doesn't" scenarios where the App Store Connect provisioning
+    /// profile is stale. macOS-only — the SecTask APIs aren't in the iOS
+    /// Swift overlay, and on iOS the embedded.mobileprovision parse is more
+    /// involved than it's worth here.
+    let entitledContainerIdentifiers: [String] = {
+        #if os(macOS)
+        guard let task = SecTaskCreateFromSelf(nil) else { return [] }
+        let key = "com.apple.developer.icloud-container-identifiers" as CFString
+        guard let value = SecTaskCopyValueForEntitlement(task, key, nil) else { return [] }
+        return (value as? [String])?.sorted() ?? []
+        #else
+        return []
+        #endif
+    }()
+
+    /// True when the configured CloudKit container is present in the
+    /// binary's entitlement list. On iOS the entitlement read isn't
+    /// available, so we conservatively return true (assume entitled) to
+    /// avoid showing a false-alarm warning.
+    var hasEntitlementForConfiguredContainer: Bool {
+        #if os(macOS)
+        return entitledContainerIdentifiers.contains(PersistenceController.cloudContainerID)
+        #else
+        return true
+        #endif
+    }
+
     #if os(iOS)
     private(set) var pushAuthStatus: String = "Unknown"
     #endif
@@ -85,7 +123,11 @@ final class CloudSyncMonitor {
 
     struct PingReport: Equatable {
         let durationMs: Int
-        let zoneNames: [String]
+        /// Each entry is `"zoneName | ownerName"`. The owner name is what
+        /// `CKCurrentUserDefaultName` resolves to on this device — if two
+        /// devices' SwiftData zones have different owner names, they are
+        /// looking at different data despite the same Apple ID display.
+        let zones: [String]
         let subscriptionIDs: [String]
         /// Records visible on the server in the SwiftData mirror zone
         /// (`com.apple.coredata.cloudkit.zone`). `nil` if the zone is missing
@@ -95,6 +137,30 @@ final class CloudSyncMonitor {
         /// first page only. For diagnostics this is fine; we just want
         /// "non-zero" vs "zero".
         let serverRecordsTruncated: Bool
+        /// True if a zone whose name matches the SwiftData mirror zone exists.
+        let mirrorZonePresent: Bool
+        /// Records visible via CKQuery against the SwiftData mirror zone for
+        /// the four record types NSPersistentCloudKitContainer creates
+        /// (CD_Folder, CD_Note, CD_TodoItem, CD_HomepageNote). This is a
+        /// different code path from `recordZoneChanges` and is *less* prone
+        /// to cloudd's local-cache bias. Divergence between this number and
+        /// `serverRecordCount` is a strong signal that the device's CloudKit
+        /// daemon has a stale local replica. `nil` if the cross-check failed
+        /// or no record types matched (schema not deployed).
+        let queryRecordCount: Int?
+        /// Per-record-type query counts, for visibility when the totals
+        /// disagree.
+        let queryRecordCountsByType: [String: Int]
+        /// Human-readable first CKQuery error captured during the cross-
+        /// check. Surfaces when all four type probes fail so the user can
+        /// see *why* (typically: record type not Queryable in production
+        /// schema, or no records of that type yet).
+        let queryFirstError: String?
+        /// Sorted `"<recordType>/<recordName>"` strings for every record the
+        /// device sees in the SwiftData zone via recordZoneChanges. Capped
+        /// to keep the panel manageable. Use to compare which specific
+        /// records each device sees.
+        let serverRecordNames: [String]
     }
 
     /// Result of the synthetic CloudKit ping — bypasses SwiftData entirely.
@@ -119,17 +185,48 @@ final class CloudSyncMonitor {
     }
 
     /// "Production" or "Development" — which CloudKit environment the binary
-    /// is talking to. Driven by build configuration: Release ships against
-    /// Production, Debug against Development. Confirms at a glance that two
-    /// supposedly-identical Release builds aren't accidentally pointing at
-    /// different stores.
+    /// is *actually* talking to, read from runtime entitlements.
+    ///
+    /// Resolution rule (matches CloudKit's own):
+    ///   1. If `com.apple.developer.icloud-container-environment` is set
+    ///      explicitly, use that. (TestFlight/Distribution builds have this.)
+    ///   2. Otherwise, fall back to `aps-environment` — `production` ⇒
+    ///      Production, `development` ⇒ Development. (Xcode-built Release
+    ///      with a Development signing profile lands here, which is why a
+    ///      locally-archived Release talks to Development CloudKit even
+    ///      though it's a Release build configuration.)
+    ///
+    /// Two Release builds with different signing profiles can therefore
+    /// talk to different CloudKit environments. This was responsible for a
+    /// long debugging detour where TestFlight and Xcode-built Release
+    /// looked identical in the build settings but synced to two different
+    /// stores.
     var cloudKitEnvironment: String {
+        #if os(macOS)
+        if let explicit = readEntitlement("com.apple.developer.icloud-container-environment") as? String {
+            return explicit
+        }
+        if let arr = readEntitlement("com.apple.developer.icloud-container-environment") as? [String], let first = arr.first {
+            return first
+        }
+        if let aps = readEntitlement("com.apple.developer.aps-environment") as? String {
+            return aps.lowercased() == "production" ? "Production" : "Development"
+        }
+        #endif
+        // iOS or unreadable: fall back to build-config heuristic.
         #if DEBUG
         return "Development"
         #else
         return "Production"
         #endif
     }
+
+    #if os(macOS)
+    private func readEntitlement(_ key: String) -> Any? {
+        guard let task = SecTaskCreateFromSelf(nil) else { return nil }
+        return SecTaskCopyValueForEntitlement(task, key as CFString, nil)
+    }
+    #endif
 
     private static let logger = Logger(subsystem: "com.ianwaters.RollingTodo4", category: "cloudsync")
 
@@ -251,29 +348,89 @@ final class CloudSyncMonitor {
             let zones = try await db.allRecordZones()
             let subs = try await db.allSubscriptions()
 
-            let cdZoneID = CKRecordZone.ID(
-                zoneName: "com.apple.coredata.cloudkit.zone",
-                ownerName: CKCurrentUserDefaultName
-            )
+            // Match by zone *name* — we want the actual server-side ownerName,
+            // not the CKCurrentUserDefaultName placeholder. Two devices that
+            // resolve the placeholder differently will see different real
+            // owner names here, which is the smoking gun for "same Apple ID
+            // displayed but actually different data".
+            let mirrorZoneName = "com.apple.coredata.cloudkit.zone"
+            let mirrorZone = zones.first(where: { $0.zoneID.zoneName == mirrorZoneName })
             var serverCount: Int? = nil
             var truncated = false
-            if zones.contains(where: { $0.zoneID == cdZoneID }) {
+            var queryCount: Int? = nil
+            var queryByType: [String: Int] = [:]
+            var queryFirstError: String? = nil
+            var serverNames: [String] = []
+            if let mirrorZone {
                 let token: CKServerChangeToken? = nil
                 let result = try await db.recordZoneChanges(
-                    inZoneWith: cdZoneID,
+                    inZoneWith: mirrorZone.zoneID,
                     since: token
                 )
                 serverCount = result.modificationResultsByID.count
                 truncated = result.moreComing
+                for (id, modResult) in result.modificationResultsByID {
+                    switch modResult {
+                    case .success(let mod):
+                        serverNames.append("\(mod.record.recordType)/\(id.recordName)")
+                    case .failure:
+                        serverNames.append("?/\(id.recordName)")
+                    }
+                }
+                serverNames.sort()
+                if serverNames.count > 50 {
+                    serverNames = Array(serverNames.prefix(50)) + ["…(\(serverNames.count - 50) more)"]
+                }
+
+                // Cross-check via CKQuery — different code path; if the local
+                // cloudd daemon is serving recordZoneChanges from a stale
+                // replica, this number can disagree.
+                let recordTypes = ["CD_Folder", "CD_Note", "CD_TodoItem", "CD_HomepageNote"]
+                var totalQueryCount = 0
+                var anyTypeQueried = false
+                var firstErrorMessage: String? = nil
+                for type in recordTypes {
+                    let q = CKQuery(recordType: type, predicate: NSPredicate(value: true))
+                    do {
+                        let r = try await db.records(
+                            matching: q,
+                            inZoneWith: mirrorZone.zoneID,
+                            desiredKeys: [],
+                            resultsLimit: 200
+                        )
+                        let n = r.matchResults.count
+                        queryByType[type] = n
+                        totalQueryCount += n
+                        anyTypeQueried = true
+                    } catch {
+                        // Schema not deployed for this type, or another
+                        // transient error — note it and move on. Capture the
+                        // first error so the user can see *why*.
+                        queryByType[type] = -1
+                        if firstErrorMessage == nil {
+                            firstErrorMessage = "\(type): \(humanReadable(error))"
+                        }
+                    }
+                }
+                if anyTypeQueried { queryCount = totalQueryCount }
+                queryFirstError = firstErrorMessage
             }
 
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            let zoneLines = zones
+                .map { "\($0.zoneID.zoneName) | \($0.zoneID.ownerName)" }
+                .sorted()
             let report = PingReport(
                 durationMs: durationMs,
-                zoneNames: zones.map { $0.zoneID.zoneName }.sorted(),
+                zones: zoneLines,
                 subscriptionIDs: subs.map { $0.subscriptionID }.sorted(),
                 serverRecordCount: serverCount,
-                serverRecordsTruncated: truncated
+                serverRecordsTruncated: truncated,
+                mirrorZonePresent: mirrorZone != nil,
+                queryRecordCount: queryCount,
+                queryRecordCountsByType: queryByType,
+                queryFirstError: queryFirstError,
+                serverRecordNames: serverNames
             )
             pingPhase = .ok(report: report)
             Self.logger.info(
@@ -310,23 +467,29 @@ final class CloudSyncMonitor {
             case .noAccount:
                 status = .noAccount(reason: "Sign in to iCloud in Settings to back up and sync your notes.")
                 syncID = nil
+                fullSyncID = nil
             case .restricted:
                 status = .noAccount(reason: "iCloud is restricted on this device. Notes won't sync until restrictions are lifted.")
                 syncID = nil
+                fullSyncID = nil
             case .temporarilyUnavailable:
                 status = .noAccount(reason: "iCloud is temporarily unavailable. We'll retry automatically.")
                 syncID = nil
+                fullSyncID = nil
             case .couldNotDetermine:
                 status = .noAccount(reason: "Couldn't reach iCloud. Check your network connection.")
                 syncID = nil
+                fullSyncID = nil
             @unknown default:
                 status = .noAccount(reason: "iCloud account state is unknown.")
                 syncID = nil
+                fullSyncID = nil
             }
         } catch {
             status = .failed(message: humanReadable(error))
             lastErrorDiagnostics = diagnosticsDump(error)
             syncID = nil
+            fullSyncID = nil
         }
     }
 
@@ -338,9 +501,11 @@ final class CloudSyncMonitor {
             // chars give a stable, low-collision fingerprint.
             let tail = String(name.suffix(6))
             syncID = "…\(tail)"
+            fullSyncID = name
         } catch {
             // Identity fetch is best-effort; sync can still work without it.
             syncID = nil
+            fullSyncID = nil
         }
     }
 
@@ -457,16 +622,15 @@ final class CloudSyncMonitor {
     private func partialFailureMessage(_ ck: CKError) -> String {
         let children = ck.partialErrorsByItemID ?? [:]
         if children.isEmpty {
-            // Empty partialFailure on macOS is almost always one of:
-            //  • Network reachability — VPN / corporate firewall blocks iCloud
-            //  • iCloud Drive disabled in System Settings (CloudKit needs it)
-            //  • Schema mismatch between Debug builds and the live container
-            //  • Stale local zone after a sign-out/sign-in
-            return "Sync stalled and iCloud didn't say why. On this machine, check: \n" +
-                   "  • iCloud Drive is on in System Settings → Apple ID → iCloud\n" +
-                   "  • RollingTodo is ticked in System Settings → Apple ID → iCloud → Apps Using iCloud\n" +
-                   "  • The network isn't behind a corporate proxy or VPN that blocks iCloud\n" +
-                   "  • The Mac's clock is correct (large skew breaks CloudKit)\n" +
+            // Empty partialFailure with no child errors is almost always one
+            // of these. Listed roughly by frequency on a Release/TestFlight
+            // build talking to Production.
+            return "Sync stalled and iCloud didn't say why. The most common cause when this hits a Release build is that the Production schema isn't deployed for this CloudKit container — until it is, exports of any record type silently fail. Check, in order:\n" +
+                   "  • CloudKit Console → this container → Schema → Deploy Schema Changes… (Dev → Prod). New containers start with empty Production schema.\n" +
+                   "  • iCloud Drive is on in System Settings → Apple ID → iCloud.\n" +
+                   "  • RollingTodo is ticked in System Settings → Apple ID → iCloud → Apps Using iCloud.\n" +
+                   "  • The network isn't behind a corporate proxy or VPN that blocks iCloud.\n" +
+                   "  • The Mac's clock is correct (large skew breaks CloudKit).\n" +
                    "Copy the full diagnostics for the recent event timeline."
         }
         let preview = children.prefix(3).map { (id, err) -> String in
@@ -508,12 +672,94 @@ final class CloudSyncMonitor {
         return lines.joined(separator: "\n")
     }
 
+    /// Full, copyable diagnostic dump — env, event totals, recent events,
+    /// last ping report (if any), and last error chain (if any). Used by
+    /// the always-available Copy Diagnostics button in Settings, so it
+    /// works whether or not sync has errored.
+    func composeFullDiagnostics() -> String {
+        var lines: [String] = []
+        lines.append(contentsOf: environmentLines())
+        lines.append("")
+        lines.append("=== Recent events (last \(recentEvents.count)) ===")
+        if recentEvents.isEmpty {
+            lines.append("No events recorded yet.")
+        } else {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            for entry in recentEvents.suffix(recentEventsLimit) {
+                lines.append("\(formatter.string(from: entry.timestamp)) \(entry.line)")
+            }
+        }
+
+        lines.append("")
+        lines.append(contentsOf: pingReportLines())
+
+        if let last = lastErrorDiagnostics {
+            lines.append("")
+            lines.append("=== Last error diagnostics ===")
+            lines.append(last)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func pingReportLines() -> [String] {
+        var lines: [String] = ["=== Last ping ==="]
+        switch pingPhase {
+        case .idle:
+            lines.append("No ping run yet. Tap Test iCloud connection to populate.")
+        case .running:
+            lines.append("Ping in progress…")
+        case .failed(let msg):
+            lines.append("Ping failed: \(msg)")
+        case .ok(let report):
+            lines.append("Reached private database in \(report.durationMs)ms.")
+            lines.append("Mirror zone present: \(report.mirrorZonePresent)")
+            lines.append("Zones (\(report.zones.count)):")
+            for z in report.zones { lines.append("  \(z)") }
+            lines.append("Subscriptions (\(report.subscriptionIDs.count)):")
+            if report.subscriptionIDs.isEmpty {
+                lines.append("  (none)")
+            } else {
+                for s in report.subscriptionIDs { lines.append("  \(s)") }
+            }
+            lines.append("Server record count (zonechanges): \(report.serverRecordCount.map { "\($0)\(report.serverRecordsTruncated ? "+" : "")" } ?? "—")")
+            lines.append("CKQuery total: \(report.queryRecordCount.map { "\($0)" } ?? "—")")
+            for (k, v) in report.queryRecordCountsByType.sorted(by: { $0.key < $1.key }) {
+                lines.append("  \(k): \(v < 0 ? "err" : "\(v)")")
+            }
+            if let e = report.queryFirstError {
+                lines.append("First CKQuery error: \(e)")
+            }
+            lines.append("Server records (this device's view, capped):")
+            if report.serverRecordNames.isEmpty {
+                lines.append("  (none)")
+            } else {
+                for name in report.serverRecordNames { lines.append("  \(name)") }
+            }
+        }
+        return lines
+    }
+
     private func environmentLines() -> [String] {
         var lines = ["=== Environment ==="]
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        lines.append("App build: \(v) (\(b))")
         lines.append("Container: \(PersistenceController.cloudContainerID)")
         lines.append("CloudKit env: \(cloudKitEnvironment)")
+        if entitledContainerIdentifiers.isEmpty {
+            lines.append("Entitled containers: (none) ⚠")
+        } else {
+            lines.append("Entitled containers: \(entitledContainerIdentifiers.joined(separator: ", "))")
+        }
+        let entitlementWarning = hasEntitlementForConfiguredContainer
+            ? ""
+            : " ⚠ — provisioning profile does not authorize this container; record-level CloudKit operations will silently fail"
+        lines.append("Configured container is entitled: \(hasEntitlementForConfiguredContainer)\(entitlementWarning)")
         lines.append("Sync ID: \(syncID ?? "—")")
+        lines.append("Full user record: \(fullSyncID ?? "—")")
         lines.append("Ubiquity identity present: \(hasUbiquityIdentity)")
+        lines.append("Status: \(humanStatusForDump())")
         lines.append("Captured at: \(Date.now.formatted(.iso8601))")
         #if DEBUG
         lines.append("Build: Debug")
@@ -543,6 +789,16 @@ final class CloudSyncMonitor {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f.string(from: date)
+    }
+
+    private func humanStatusForDump() -> String {
+        switch status {
+        case .unknown: "unknown"
+        case .ready: "ready"
+        case .syncing: "syncing"
+        case .failed(let m): "failed: \(m)"
+        case .noAccount(let r): "noAccount: \(r)"
+        }
     }
 
     /// Walks `NSUnderlyingErrorKey` and `partialErrorsByItemID` so the dump

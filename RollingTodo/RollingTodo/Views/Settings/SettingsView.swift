@@ -294,9 +294,35 @@ struct SettingsView: View {
     @ViewBuilder
     private var cloudDiagnosticsBody: some View {
         VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Button(action: copyFullDiagnostics) {
+                    Text(diagnosticsCopied ? "Copied" : "Copy full diagnostics")
+                }
+                .font(.system(size: 12))
+                .disabled(diagnosticsCopied)
+                Spacer(minLength: 0)
+            }
+            diagnosticRow("App build", value: appBuildString, monospaced: true)
             diagnosticRow("CloudKit env", value: cloudSync.cloudKitEnvironment,
                           tint: cloudSync.cloudKitEnvironment == "Production" ? Color.editorialSage : Color.editorialAmber)
             diagnosticRow("Container", value: PersistenceController.cloudContainerID, monospaced: true)
+            diagnosticRow(
+                "Entitled containers",
+                value: cloudSync.entitledContainerIdentifiers.isEmpty
+                    ? "(none)"
+                    : cloudSync.entitledContainerIdentifiers.joined(separator: ", "),
+                tint: cloudSync.hasEntitlementForConfiguredContainer ? Color.editorialSage : Color.editorialRed,
+                monospaced: true
+            )
+            if !cloudSync.hasEntitlementForConfiguredContainer {
+                Text("This binary's entitlement does not authorize the configured CloudKit container. Record-level operations will silently fail. Cause: provisioning profile is stale (typical when changing container IDs and uploading to TestFlight without refreshing the profile in Xcode → Settings → Accounts → Download Manual Profiles, then re-archiving).")
+                    .font(.editorialItalic(11))
+                    .foregroundStyle(Color.editorialRed)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let full = cloudSync.fullSyncID {
+                diagnosticRow("Full user record", value: hideAccountIdentifier ? "•••••••" : full, monospaced: true)
+            }
             diagnosticRow("Ubiquity identity", value: cloudSync.hasUbiquityIdentity ? "Present" : "Missing",
                           tint: cloudSync.hasUbiquityIdentity ? Color.editorialSage : Color.editorialAmber)
             #if os(iOS)
@@ -372,8 +398,22 @@ struct SettingsView: View {
         }
     }
 
-    private func localNoteCount() -> Int {
-        (try? context.fetchCount(FetchDescriptor<Note>())) ?? -1
+    /// Sum across all four CloudKit-mirrored entity types so the count is
+    /// directly comparable to `recordZoneChanges` server-side count, which
+    /// counts every CKRecord regardless of type.
+    private func localTotalRecordCount() -> Int {
+        let folders   = (try? context.fetchCount(FetchDescriptor<Folder>())) ?? -1
+        let notes     = (try? context.fetchCount(FetchDescriptor<Note>())) ?? -1
+        let todos     = (try? context.fetchCount(FetchDescriptor<TodoItem>())) ?? -1
+        let homepages = (try? context.fetchCount(FetchDescriptor<HomepageNote>())) ?? -1
+        if folders < 0 || notes < 0 || todos < 0 || homepages < 0 { return -1 }
+        return folders + notes + todos + homepages
+    }
+
+    private var appBuildString: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "\(v) (\(b))"
     }
 
     private func recordsDetail(local: Int, server: Int) -> String {
@@ -398,7 +438,7 @@ struct SettingsView: View {
                 .foregroundStyle(Color.editorialRed)
                 .fixedSize(horizontal: false, vertical: true)
         case .ok(let report):
-            let local = localNoteCount()
+            let local = localTotalRecordCount()
             let server = report.serverRecordCount
             VStack(alignment: .leading, spacing: 6) {
                 Text("Reached private database in \(report.durationMs)ms.")
@@ -407,16 +447,16 @@ struct SettingsView: View {
 
                 pingMetricRow(
                     label: "Zones",
-                    value: "\(report.zoneNames.count)",
-                    detail: report.zoneNames.joined(separator: ", "),
-                    isHealthy: report.zoneNames.contains("com.apple.coredata.cloudkit.zone")
+                    value: "\(report.zones.count)",
+                    detail: report.zones.isEmpty ? "(none)" : report.zones.joined(separator: "\n"),
+                    isHealthy: report.mirrorZonePresent
                 )
                 pingMetricRow(
                     label: "Subscriptions",
                     value: "\(report.subscriptionIDs.count)",
                     detail: report.subscriptionIDs.isEmpty
                         ? "None — without a subscription this device cannot receive silent push and will never auto-import remote changes. Sign out / in of iCloud or reinstall."
-                        : report.subscriptionIDs.joined(separator: ", "),
+                        : report.subscriptionIDs.joined(separator: "\n"),
                     isHealthy: !report.subscriptionIDs.isEmpty
                 )
                 if let server {
@@ -434,8 +474,93 @@ struct SettingsView: View {
                         isHealthy: false
                     )
                 }
+
+                // Always render this row when the zone exists — it's the
+                // most informative line in the report. If the cross-check
+                // failed, the row says so explicitly rather than vanishing.
+                if report.mirrorZonePresent {
+                    let descriptor = queryCrossCheckDescriptor(report: report)
+                    pingMetricRow(
+                        label: "Query cross-check",
+                        value: descriptor.value,
+                        detail: descriptor.detail,
+                        isHealthy: descriptor.healthy
+                    )
+                }
+
+                if !report.serverRecordNames.isEmpty {
+                    Divider().padding(.vertical, 2)
+                    Text("Server records (this device's view)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.inkMuted)
+                    Text(report.serverRecordNames.joined(separator: "\n"))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Color.ink)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Copy this list from each device. If two devices show different lists despite identical Apple ID, the records are not making it across — diff the lists to see which records are missing where.")
+                        .font(.editorialItalic(11))
+                        .foregroundStyle(Color.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text("If query and zonechanges disagree on this device, the local CloudKit daemon (cloudd) is serving stale state. Reinstalling the app does not clear this — sign out of iCloud entirely (System Settings → Apple ID → Sign Out), reboot, then sign back in. To watch sync activity live, open Console.app and filter on subsystem `com.apple.coredata` or `com.apple.cloudkit` while reproducing the issue.")
+                    .font(.editorialItalic(11))
+                    .foregroundStyle(Color.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private struct QueryCrossCheckDescriptor {
+        let value: String
+        let detail: String
+        let healthy: Bool
+    }
+
+    private func queryCrossCheckDescriptor(report: CloudSyncMonitor.PingReport) -> QueryCrossCheckDescriptor {
+        let q = report.queryRecordCount
+        let server = report.serverRecordCount
+        let perType = perTypeBreakdown(report.queryRecordCountsByType)
+        if let q, let server {
+            return QueryCrossCheckDescriptor(
+                value: "ckquery \(q)  •  zonechanges \(server)",
+                detail: queryCrossCheckDetail(query: q, server: server, byType: report.queryRecordCountsByType),
+                healthy: q == server
+            )
+        }
+        if let q {
+            return QueryCrossCheckDescriptor(
+                value: "ckquery \(q)  •  zonechanges —",
+                detail: "recordZoneChanges did not return a count. \(perType)",
+                healthy: false
+            )
+        }
+        let serverText = server.map { "\($0)" } ?? "—"
+        let errLine = report.queryFirstError.map { "\nFirst error — \($0)" } ?? ""
+        return QueryCrossCheckDescriptor(
+            value: "ckquery —  •  zonechanges \(serverText)",
+            detail: "All four CKQuery probes failed. The most common cause is that the record types (CD_Folder, CD_Note, CD_TodoItem, CD_HomepageNote) aren't marked Queryable in the Production schema. In CloudKit Console → Schema → Indexes, add a Queryable index on `recordName` for each type and redeploy.\n\(perType)\(errLine)",
+            healthy: false
+        )
+    }
+
+    private func queryCrossCheckDetail(query: Int, server: Int, byType: [String: Int]) -> String {
+        let perType = perTypeBreakdown(byType)
+        if query == server {
+            return "Both query paths agree. \(perType)"
+        }
+        if query > server {
+            return "CKQuery sees \(query - server) more record\(query - server == 1 ? "" : "s") than recordZoneChanges. The CloudKit daemon's local replica is stale on this device. \(perType)"
+        }
+        return "recordZoneChanges sees \(server - query) more than CKQuery. Some record types may not be deployed in the production schema. \(perType)"
+    }
+
+    private func perTypeBreakdown(_ byType: [String: Int]) -> String {
+        let pairs = byType
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key.dropFirst(3)): \($0.value < 0 ? "err" : "\($0.value)")" }
+        return pairs.isEmpty ? "" : "Per-type — " + pairs.joined(separator: ", ")
     }
 
     @ViewBuilder
@@ -567,6 +692,14 @@ struct SettingsView: View {
 
     private func copyDiagnostics() {
         guard let text = cloudSync.lastErrorDiagnostics else { return }
+        copyToPasteboard(text)
+    }
+
+    private func copyFullDiagnostics() {
+        copyToPasteboard(cloudSync.composeFullDiagnostics())
+    }
+
+    private func copyToPasteboard(_ text: String) {
         #if os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
