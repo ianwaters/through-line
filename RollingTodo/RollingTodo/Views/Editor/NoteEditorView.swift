@@ -177,29 +177,56 @@ private struct NoteEditorContent: View {
                 .fill(Color.inkHairline)
                 .frame(height: 0.5)
 
-            if note.todoEnabled {
-                TodoListSection(note: note)
-                Rectangle()
-                    .fill(Color.inkHairline)
-                    .frame(height: 0.5)
-            }
-
+            // .edit and .preview modes share a single outer ScrollView so the
+            // todo list sizes to its content and pushes the body down inside
+            // one scrollable column. .split keeps two independently scrolling
+            // panes (each side has its own ScrollView), so wrapping it in an
+            // outer ScrollView would create nested-scroll conflicts.
             switch mode {
             case .edit:
-                TextEditor(text: $note.bodyMarkdown)
-                    .font(.system(size: 15, design: .serif))
-                    .lineSpacing(4)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 12)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        if note.todoEnabled {
+                            TodoListSection(note: note)
+                            Rectangle()
+                                .fill(Color.inkHairline)
+                                .frame(height: 0.5)
+                        }
+                        // TextField axis:.vertical sizes to its content (no
+                        // inner scroll), so the body grows to fit and the
+                        // outer ScrollView handles scrolling for the whole
+                        // editor.
+                        TextField("Start writing…", text: $note.bodyMarkdown, axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 15, design: .serif))
+                            .lineSpacing(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                    }
+                }
             case .preview:
                 ScrollView {
-                    MarkdownView(text: note.bodyMarkdown)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 20)
+                    VStack(spacing: 0) {
+                        if note.todoEnabled {
+                            TodoListSection(note: note)
+                            Rectangle()
+                                .fill(Color.inkHairline)
+                                .frame(height: 0.5)
+                        }
+                        MarkdownView(text: note.bodyMarkdown)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 32)
+                            .padding(.vertical, 20)
+                    }
                 }
             case .split:
+                if note.todoEnabled {
+                    TodoListSection(note: note)
+                    Rectangle()
+                        .fill(Color.inkHairline)
+                        .frame(height: 0.5)
+                }
                 HStack(spacing: 0) {
                     TextEditor(text: $note.bodyMarkdown)
                         .font(.system(size: 15, design: .serif))

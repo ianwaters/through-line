@@ -13,20 +13,14 @@ struct TodoListSection: View {
         (note.todoItems ?? []).sorted { $0.sortOrder < $1.sortOrder }
     }
 
-    private var dynamicHeight: CGFloat {
-        // Each row is now ~36pt minimum but can grow up to ~8 lines tall via
-        // axis: .vertical wrap. Use a heuristic average of 44pt per row so the
-        // List's frame still bounds the section without clipping mid-row text;
-        // overflow scrolls inside the inner List.
-        let estPerRow: CGFloat = 44
-        let addRowHeight: CGFloat = 36
-        let count = items.count
-        let calc = CGFloat(count) * estPerRow + addRowHeight + 8
-        return min(max(calc, 80), 480)
-    }
-
     var body: some View {
-        List {
+        // LazyVStack instead of List so the section sizes to its actual content
+        // — multiline rows expand naturally, the Add row always sits at the
+        // measured bottom, and the parent ScrollView in NoteEditorView absorbs
+        // any overflow. Drag-to-reorder via `.onMove` is List-only and is the
+        // tradeoff: re-add via custom `.draggable` + `.dropDestination` if
+        // needed. iOS swipe-to-delete is replaced by the existing context menu.
+        LazyVStack(spacing: 0) {
             ForEach(items) { item in
                 TodoItemRow(
                     item: item,
@@ -35,40 +29,29 @@ struct TodoListSection: View {
                     onTextChanged: { scheduleSave() },
                     onReturnPressed: { handleReturnPressed(after: item) }
                 )
-                .listRowInsets(.init(top: 4, leading: 12, bottom: 4, trailing: 12))
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button(role: .destructive) {
-                        delete(item)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 12)
                 .contextMenu {
                     Button("Delete", systemImage: "trash", role: .destructive) {
                         delete(item)
                     }
                 }
             }
-            .onMove(perform: move)
 
             Button(action: { _ = add() }) {
                 Label("Add task", systemImage: "plus.circle")
                     .foregroundStyle(.tint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .listRowInsets(.init(top: 4, leading: 12, bottom: 4, trailing: 12))
+            .buttonStyle(.plain)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .frame(height: dynamicHeight)
         .onChange(of: focusedTodoID) { oldValue, _ in
-            // Flush any pending save the moment the user leaves a row, so we
-            // never lose keystrokes if the row is destroyed (delete, reorder).
             if oldValue != nil { flushSave() }
         }
         .onChange(of: pendingFocusID) { _, newValue in
             guard let id = newValue else { return }
-            // Defer focus assignment by one runloop turn so SwiftUI has time to
-            // insert the new row before we try to focus into it.
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(20))
                 focusedTodoID = id
@@ -97,7 +80,6 @@ struct TodoListSection: View {
     private func handleReturnPressed(after current: TodoItem) {
         flushSave()
         let insertAfter = current.sortOrder
-        // Bump every trailing item's sortOrder by 1.
         for item in items where item.sortOrder > insertAfter {
             item.sortOrder += 1
         }
@@ -111,16 +93,6 @@ struct TodoListSection: View {
 
     private func delete(_ item: TodoItem) {
         context.delete(item)
-        note.modifiedDate = .now
-        try? context.save()
-    }
-
-    private func move(from offsets: IndexSet, to target: Int) {
-        var reordered = items
-        reordered.move(fromOffsets: offsets, toOffset: target)
-        for (i, item) in reordered.enumerated() {
-            item.sortOrder = i
-        }
         note.modifiedDate = .now
         try? context.save()
     }
@@ -155,18 +127,6 @@ private struct TodoItemRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "line.3.horizontal")
-                .foregroundStyle(.secondary)
-                .font(.system(size: 11, weight: .medium))
-                .frame(width: 12)
-                .padding(.top, 8)
-                #if os(macOS)
-                .opacity(isHovered ? 0.7 : 0.3)
-                #else
-                .opacity(0.4)
-                #endif
-                .help("Drag to reorder")
-
             Button {
                 item.isDone.toggle()
                 item.note?.modifiedDate = .now
