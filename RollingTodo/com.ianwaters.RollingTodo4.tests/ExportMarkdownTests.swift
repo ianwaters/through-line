@@ -1,12 +1,13 @@
 import Testing
 import Foundation
+import SwiftData
 @testable import RollingTodo
 
 @MainActor
-@Suite("ExportService.markdown(for:)")
+@Suite("ExportService.markdown(for:)", .serialized)
 struct ExportMarkdownTests {
     @Test func minimalNoteHasYAMLFrontMatterWithRequiredFields() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "Hello", folder: nil, sortOrder: 0)
         note.bodyMarkdown = "Body text."
         context.insert(note)
@@ -21,7 +22,7 @@ struct ExportMarkdownTests {
     }
 
     @Test func todoMetadataIsIncludedOnlyForTodos() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let plain = Note(title: "Reference", folder: nil, sortOrder: 0)
         let todo = Note(title: "Task", folder: nil, sortOrder: 1)
         todo.todoEnabled = true
@@ -41,7 +42,7 @@ struct ExportMarkdownTests {
     }
 
     @Test func todoItemsAreEmittedAsCheckboxList() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "Plan", folder: nil, sortOrder: 0)
         note.todoEnabled = true
         let item1 = TodoItem(text: "first", sortOrder: 0)
@@ -60,7 +61,7 @@ struct ExportMarkdownTests {
     }
 
     @Test func titlesWithSpecialCharactersAreYAMLQuoted() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "1:1 with #boss", folder: nil, sortOrder: 0)
         context.insert(note)
 
@@ -71,7 +72,7 @@ struct ExportMarkdownTests {
     }
 
     @Test func tagsAreSerialisedAsArray() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "tagged", folder: nil, sortOrder: 0)
         note.tags = ["alpha", "beta"]
         context.insert(note)
@@ -82,7 +83,7 @@ struct ExportMarkdownTests {
     }
 
     @Test func archivedAndLockedFlagsAreIncludedWhenSet() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "secret", folder: nil, sortOrder: 0)
         note.archivedDate = .now
         note.isLocked = true
@@ -97,7 +98,7 @@ struct ExportMarkdownTests {
     /// Identical input should produce identical output. Catches regressions
     /// where, e.g., a `Set` swap into the YAML emit path would shuffle order.
     @Test func outputIsDeterministic() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let fixed = TestSupport.date(2026, 5, 10)
         let note = Note(title: "Stable", folder: nil, sortOrder: 0)
         note.bodyMarkdown = "body"

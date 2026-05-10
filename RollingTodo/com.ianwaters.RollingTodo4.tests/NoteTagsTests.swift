@@ -1,11 +1,12 @@
 import Testing
+import SwiftData
 @testable import RollingTodo
 
 @MainActor
-@Suite("Note.refreshTags")
+@Suite("Note.refreshTags", .serialized)
 struct NoteTagsTests {
     @Test func parsesHashtagsFromTitleAndBody() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "Daily standup #work", folder: nil, sortOrder: 0)
         note.bodyMarkdown = "follow up on #standup-notes #work"
         context.insert(note)
@@ -16,7 +17,7 @@ struct NoteTagsTests {
     }
 
     @Test func returnsEmptyArrayWhenNoHashtags() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "Plain text", folder: nil, sortOrder: 0)
         note.bodyMarkdown = "no tags here"
         context.insert(note)
@@ -27,7 +28,7 @@ struct NoteTagsTests {
     }
 
     @Test func clearsTagsWhenAllHashtagsRemoved() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "#work", folder: nil, sortOrder: 0)
         context.insert(note)
         note.refreshTags()
@@ -39,7 +40,7 @@ struct NoteTagsTests {
     }
 
     @Test func sortsTagsAlphabetically() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "#zeta #alpha #mu", folder: nil, sortOrder: 0)
         context.insert(note)
 

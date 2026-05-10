@@ -8,10 +8,10 @@ import SwiftData
 /// recurrence drives data mutation that the user can't easily detect if it
 /// silently goes wrong.
 @MainActor
-@Suite("Note.advanceRecurrence")
+@Suite("Note.advanceRecurrence", .serialized)
 struct NoteRecurrenceTests {
     @Test func nonRecurringReturnsFalseAndDoesNotMutate() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "Once", folder: nil, sortOrder: 0)
         note.recurrence = .none
         note.dueDate = TestSupport.date(2026, 5, 10)
@@ -25,7 +25,7 @@ struct NoteRecurrenceTests {
     }
 
     @Test func dailyAdvancesAndUnchecksTodos() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "Daily", folder: nil, sortOrder: 0)
         note.recurrence = .daily
         note.dueDate = TestSupport.date(2026, 5, 10)
@@ -46,7 +46,7 @@ struct NoteRecurrenceTests {
     /// When `dueDate` is nil, `advanceRecurrence()` falls back to `.now`.
     /// The result should still be a date in the future.
     @Test func usesNowWhenDueDateIsNil() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "No due", folder: nil, sortOrder: 0)
         note.recurrence = .weekly
         note.dueDate = nil
@@ -60,7 +60,7 @@ struct NoteRecurrenceTests {
     }
 
     @Test func unchecksMultipleTodoItems() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let note = Note(title: "Many", folder: nil, sortOrder: 0)
         note.recurrence = .daily
         note.dueDate = TestSupport.date(2026, 5, 10)

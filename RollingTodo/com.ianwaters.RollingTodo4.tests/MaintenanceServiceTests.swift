@@ -7,14 +7,14 @@ import SwiftData
 /// an in-memory SwiftData context. These maintenance jobs run unattended so a
 /// regression here would silently corrupt user notebooks.
 @MainActor
-@Suite("MaintenanceService")
+@Suite("MaintenanceService", .serialized)
 struct MaintenanceServiceTests {
     private var calendar: Calendar { Calendar.current }
 
     // MARK: - rescheduleOverdue
 
     @Test func reschedulesOverdueTodoNoteToToday() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let yesterday = calendar.date(byAdding: .day, value: -1, to: .now)!
         let note = Note(title: "Overdue", folder: nil, sortOrder: 0)
         note.todoEnabled = true
@@ -29,7 +29,7 @@ struct MaintenanceServiceTests {
     }
 
     @Test func leavesNonTodoNotesAlone() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let yesterday = calendar.date(byAdding: .day, value: -1, to: .now)!
         let note = Note(title: "Reference", folder: nil, sortOrder: 0)
         note.todoEnabled = false
@@ -42,7 +42,7 @@ struct MaintenanceServiceTests {
     }
 
     @Test func leavesDoneAndCancelledNotesAlone() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let yesterday = calendar.date(byAdding: .day, value: -1, to: .now)!
 
         let done = Note(title: "Done", folder: nil, sortOrder: 0)
@@ -65,7 +65,7 @@ struct MaintenanceServiceTests {
     }
 
     @Test func leavesFutureDueDatesAlone() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let nextWeek = calendar.date(byAdding: .day, value: 7, to: .now)!
         let note = Note(title: "Future", folder: nil, sortOrder: 0)
         note.todoEnabled = true
@@ -81,7 +81,7 @@ struct MaintenanceServiceTests {
     // MARK: - archiveInactive
 
     @Test func archivesInactiveTodoNotesOlderThanCutoff() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let oldDate = calendar.date(byAdding: .day, value: -45, to: .now)!
         let note = Note(title: "Stale", folder: nil, sortOrder: 0)
         note.todoEnabled = true
@@ -94,7 +94,7 @@ struct MaintenanceServiceTests {
     }
 
     @Test func leavesInactiveNonTodoNotesAlone() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let oldDate = calendar.date(byAdding: .day, value: -90, to: .now)!
         let note = Note(title: "Old reference note", folder: nil, sortOrder: 0)
         note.todoEnabled = false
@@ -107,7 +107,7 @@ struct MaintenanceServiceTests {
     }
 
     @Test func leavesAlreadyArchivedNotesAlone() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let oldDate = calendar.date(byAdding: .day, value: -90, to: .now)!
         let archivedAt = calendar.date(byAdding: .day, value: -10, to: .now)!
         let note = Note(title: "Was archived", folder: nil, sortOrder: 0)
@@ -123,7 +123,7 @@ struct MaintenanceServiceTests {
     }
 
     @Test func leavesRecentlyModifiedNotesAlone() {
-        let context = TestSupport.makeInMemoryContext()
+        let context = TestSupport.freshContext()
         let recent = calendar.date(byAdding: .day, value: -3, to: .now)!
         let note = Note(title: "Active", folder: nil, sortOrder: 0)
         note.todoEnabled = true
