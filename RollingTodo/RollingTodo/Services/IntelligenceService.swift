@@ -139,7 +139,7 @@ final class IntelligenceService {
         }
 
         let prompt = """
-            You are a personal assistant assiting a professional.
+            You are a personal assistant assisting a professional.
             Create a single sentence summarising the user's \(input.timeOfDayNoun). \
             Maximum 24 words. Friendly in tone, no emoji, no exclamation marks. \
             If everything is quiet, say so. Events are distinct. 

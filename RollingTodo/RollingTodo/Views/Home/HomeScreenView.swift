@@ -306,45 +306,52 @@ struct HomeScreenView: View {
             }
             .padding(.bottom, 18)
 
-            VStack(spacing: 0) {
-                QuickActionRow(
-                    title: "Set overdue to Triage",
-                    detail: "Stops the bleed; marks them for review",
-                    symbol: "questionmark.circle",
-                    count: overdue.count,
-                    action: performSetOverdueToTriage
-                )
-                Divider().background(Color.inkHairline)
-                QuickActionRow(
-                    title: "Move done to Archive",
-                    detail: "Closes out finished work",
-                    symbol: "archivebox",
-                    count: done.count,
-                    action: performMoveDoneToArchive
-                )
-                Divider().background(Color.inkHairline)
-                QuickActionRow(
-                    title: "Move cancelled to Archive",
-                    detail: "Tidy without deleting",
-                    symbol: "archivebox.fill",
-                    count: cancelled.count,
-                    action: performMoveCancelledToArchive
-                )
-                Divider().background(Color.inkHairline)
-                QuickActionRow(
-                    title: "Delete cancelled",
-                    detail: "Permanent — gone for good",
-                    symbol: "trash",
-                    count: cancelled.count,
-                    role: .destructive,
-                    action: { confirmingDeleteCancelled = true }
+            if cleanupTotal == 0 {
+                Text("All clear, nothing to clean up.")
+                    .font(.editorialItalic(14))
+                    .foregroundStyle(Color.inkSoft)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 0) {
+                    QuickActionRow(
+                        title: "Set overdue to Triage",
+                        detail: "Stops the bleed; marks them for review",
+                        symbol: "questionmark.circle",
+                        count: overdue.count,
+                        action: performSetOverdueToTriage
+                    )
+                    Divider().background(Color.inkHairline)
+                    QuickActionRow(
+                        title: "Move done to Archive",
+                        detail: "Closes out finished work",
+                        symbol: "archivebox",
+                        count: done.count,
+                        action: performMoveDoneToArchive
+                    )
+                    Divider().background(Color.inkHairline)
+                    QuickActionRow(
+                        title: "Move cancelled to Archive",
+                        detail: "Tidy without deleting",
+                        symbol: "archivebox.fill",
+                        count: cancelled.count,
+                        action: performMoveCancelledToArchive
+                    )
+                    Divider().background(Color.inkHairline)
+                    QuickActionRow(
+                        title: "Delete cancelled",
+                        detail: "Permanent — gone for good",
+                        symbol: "trash",
+                        count: cancelled.count,
+                        role: .destructive,
+                        action: { confirmingDeleteCancelled = true }
+                    )
+                }
+                .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.inkHairline, lineWidth: 0.5)
                 )
             }
-            .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.inkHairline, lineWidth: 0.5)
-            )
         }
     }
 
