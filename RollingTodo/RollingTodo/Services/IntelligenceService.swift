@@ -234,8 +234,10 @@ final class IntelligenceService {
             Use the present tense. Use modal verbs. DO NOT USE THE PAST TENSE.
             Use simple English.
             When there's nothing pressing, suggest what the user could do with the
-            quiet (e.g. "You can enjoy a relaxed morning", "You have time for deep
-            work"). Don't assert what the user is feeling or doing.
+            quiet (e.g. "You can enjoy a relaxed \(input.timeOfDayNoun)", "You have
+            time for deep work"). Match the time of day in your phrasing — do not
+            mention any other part of the day. Don't assert what the user is feeling
+            or doing.
 
             Facts to weave in (omit any that are zero/empty):
             - Urgent todos: \(input.urgentCount)

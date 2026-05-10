@@ -81,6 +81,11 @@ struct SettingsView: View {
             } header: {
                 Text("Auto-Archive Inactive Todos").eyebrowStyle(tint: Color.inkMuted)
             }
+            Section {
+                Text("Auto-archive and overdue rescheduling run when the app comes to the foreground.")
+                    .font(.editorialItalic(12))
+                    .foregroundStyle(Color.inkSoft)
+            }
 
             Section {
                 Button(action: buildAndExport) {
@@ -102,12 +107,6 @@ struct SettingsView: View {
                     .foregroundStyle(Color.inkSoft)
             } header: {
                 Text("Backup").eyebrowStyle(tint: Color.inkMuted)
-            }
-
-            Section {
-                Text("Auto-archive and overdue rescheduling run when the app comes to the foreground.")
-                    .font(.editorialItalic(12))
-                    .foregroundStyle(Color.inkSoft)
             }
         }
         .formStyle(.grouped)

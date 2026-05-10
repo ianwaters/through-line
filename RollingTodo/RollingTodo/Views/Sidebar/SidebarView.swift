@@ -103,21 +103,21 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func folderRow(_ folder: Folder) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "folder")
-                .foregroundStyle(.tint)
-                .frame(width: 16)
-
+        Group {
             if renamingID == folder.id {
-                TextField("Folder name", text: $renameText)
-                    .textFieldStyle(.plain)
-                    .focused($renameFocus, equals: folder.id)
-                    .onSubmit { commitRename() }
-                    #if os(macOS)
-                    .onExitCommand { cancelRename() }
-                    #endif
+                Label {
+                    TextField("Folder name", text: $renameText)
+                        .textFieldStyle(.plain)
+                        .focused($renameFocus, equals: folder.id)
+                        .onSubmit { commitRename() }
+                        #if os(macOS)
+                        .onExitCommand { cancelRename() }
+                        #endif
+                } icon: {
+                    Image(systemName: "folder")
+                }
             } else {
-                Text(folder.name.isEmpty ? "Untitled" : folder.name)
+                Label(folder.name.isEmpty ? "Untitled" : folder.name, systemImage: "folder")
             }
         }
         .onTapGesture(count: 2) {
