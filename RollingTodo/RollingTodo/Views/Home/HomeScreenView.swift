@@ -150,6 +150,16 @@ struct HomeScreenView: View {
     }
 
     private func regenerateSummaryIfNeeded() async {
+        // Cache hit on the service: render instantly on re-appearance (e.g.
+        // user tab-switched away and back on iOS) without spawning a fresh
+        // LanguageModelSession.
+        let hash = summaryInputHash
+        if let cached = intelligence.cachedDailySummary(matching: hash) {
+            summaryState = .ready(cached)
+            lastSummaryGeneratedAt = .now
+            return
+        }
+
         // Debounce: wait for inputs to stabilize before kicking off model work.
         // SwiftData @Query results and CalendarEventsService.events often
         // arrive a few hundred ms after view appear; without this, we'd
@@ -176,7 +186,7 @@ struct HomeScreenView: View {
                 return (time: time, title: event.title)
             }
         )
-        let result = await intelligence.dailySummary(input)
+        let result = await intelligence.dailySummary(input, hash: hash)
         // Foundation Models doesn't honour cancellation mid-generation, so a
         // stale completion can land here even after .task(id:) cancelled us.
         // Drop it so a newer task's result wins.

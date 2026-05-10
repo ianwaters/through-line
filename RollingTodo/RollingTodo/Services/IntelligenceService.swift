@@ -79,7 +79,52 @@ final class IntelligenceService {
         let upcomingEvents: [(time: String, title: String)]   // already formatted
     }
 
-    func dailySummary(_ input: DailySummaryInput) async -> String? {
+    /// Cached daily summary keyed by an opaque hash the caller computes from
+    /// its inputs. Survives view lifecycle so the home screen doesn't re-run
+    /// the model when the user tab-switches back to it on iOS.
+    private var cachedSummary: (hash: Int, text: String)?
+    /// In-flight summary task, if one is currently running. We dedupe by hash
+    /// so a re-entrant call (view recreated mid-generation) joins the existing
+    /// task instead of spawning a parallel `LanguageModelSession` that would
+    /// race against — and on Foundation Models often hang behind — the first.
+    private var summaryTask: (hash: Int, task: Task<String?, Never>)?
+
+    /// Synchronous cache lookup. View calls this first to render instantly on
+    /// re-appearance when nothing has changed.
+    func cachedDailySummary(matching hash: Int) -> String? {
+        guard let cached = cachedSummary, cached.hash == hash else { return nil }
+        return cached.text
+    }
+
+    /// Returns a daily summary for `input`, hitting the cache or joining an
+    /// in-flight task when possible. `hash` should uniquely identify the
+    /// input set the caller cares about (urgent counts, events, time-of-day).
+    func dailySummary(_ input: DailySummaryInput, hash: Int) async -> String? {
+        if let cached = cachedSummary, cached.hash == hash {
+            return cached.text
+        }
+        if let existing = summaryTask, existing.hash == hash {
+            return await existing.task.value
+        }
+        // A different hash is in flight — let it finish and discard its
+        // result (its observer is gone or about to be replaced anyway).
+        summaryTask?.task.cancel()
+
+        let task = Task<String?, Never> { [weak self] in
+            await self?.generateDailySummary(input)
+        }
+        summaryTask = (hash, task)
+        let result = await task.value
+        if summaryTask?.hash == hash {
+            summaryTask = nil
+            if let result {
+                cachedSummary = (hash, result)
+            }
+        }
+        return result
+    }
+
+    private func generateDailySummary(_ input: DailySummaryInput) async -> String? {
         guard isAvailable else { return nil }
 
         let eventsLine: String

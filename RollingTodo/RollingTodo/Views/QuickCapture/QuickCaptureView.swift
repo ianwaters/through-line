@@ -19,7 +19,7 @@ struct QuickCaptureView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
-                Text("A new thought")
+                Text("A quick thought")
                     .font(.editorialDisplay(20, weight: .semibold))
                     .foregroundStyle(Color.ink)
                 Spacer()
