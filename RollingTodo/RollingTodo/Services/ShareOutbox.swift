@@ -62,8 +62,7 @@ enum ShareOutbox {
                 )
                 try? fm.removeItem(at: url)
             } catch {
-                let quarantined = url.appendingPathExtension("bad")
-                _ = try? fm.moveItem(at: url, to: quarantined)
+                try? fm.removeItem(at: url)
             }
         }
     }

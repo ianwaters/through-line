@@ -20,8 +20,9 @@ final class UnlockSession {
     }
 
     /// Prompts for device authentication (biometric with passcode fallback).
-    /// Returns true on success.
-    func authenticate(reason: String) async -> Bool {
+    /// Returns true on success. Static because the prompt is stateless — instance
+    /// state only tracks which note IDs are currently unlocked.
+    static func authenticate(reason: String) async -> Bool {
         let context = LAContext()
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {

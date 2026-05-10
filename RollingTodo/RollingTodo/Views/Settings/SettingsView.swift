@@ -270,6 +270,15 @@ struct SettingsView: View {
         exportError = nil
         Task { @MainActor in
             defer { building = false }
+            if hasLockedNotes() {
+                let ok = await UnlockSession.authenticate(
+                    reason: "Authenticate to include sealed notes in your export."
+                )
+                guard ok else {
+                    exportError = "Export cancelled — sealed notes need authentication."
+                    return
+                }
+            }
             guard let data = ExportService.exportAll(context: context) else {
                 exportError = "Couldn't build the export — try again."
                 return
@@ -277,6 +286,11 @@ struct SettingsView: View {
             exportDocument = ExportDocument(data: data)
             showExporter = true
         }
+    }
+
+    private func hasLockedNotes() -> Bool {
+        let descriptor = FetchDescriptor<Note>(predicate: #Predicate { $0.isLocked })
+        return ((try? context.fetchCount(descriptor)) ?? 0) > 0
     }
 }
 

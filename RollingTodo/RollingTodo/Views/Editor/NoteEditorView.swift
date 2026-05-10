@@ -84,7 +84,7 @@ private struct LockedNoteView: View {
         guard !attempting else { return }
         attempting = true
         defer { attempting = false }
-        let ok = await unlockSession.authenticate(reason: "Unlock \"\(note.title.isEmpty ? "this note" : note.title)\"")
+        let ok = await UnlockSession.authenticate(reason: "Unlock \"\(note.title.isEmpty ? "this note" : note.title)\"")
         if ok { unlockSession.unlock(note.id) }
     }
 }

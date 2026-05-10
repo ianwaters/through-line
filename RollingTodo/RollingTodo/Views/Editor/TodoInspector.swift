@@ -172,7 +172,7 @@ struct TodoInspector: View {
         let reason = note.isLocked
             ? "Remove lock from \"\(note.title.isEmpty ? "this note" : note.title)\""
             : "Lock \"\(note.title.isEmpty ? "this note" : note.title)\""
-        let ok = await unlockSession.authenticate(reason: reason)
+        let ok = await UnlockSession.authenticate(reason: reason)
         guard ok else { return }
         note.isLocked.toggle()
         if !note.isLocked {
