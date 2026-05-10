@@ -1,6 +1,13 @@
 import CloudKit
 import CoreData
 import Foundation
+import os
+
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// Observes CloudKit sync events and account state for the SwiftData container,
 /// surfacing them as a humanised status the Settings pane can render. SwiftData
@@ -44,6 +51,19 @@ final class CloudSyncMonitor {
 
     private(set) var recheckPhase: RecheckPhase = .idle
     private var recheckResetTask: Task<Void, Never>?
+
+    /// Ring buffer of the last 10 NSPersistentCloudKitContainer events. Useful
+    /// when partialFailure errors land with empty userInfo — knowing whether
+    /// imports/exports/setups succeeded around the failure is the only clue.
+    private var recentEvents: [EventRecord] = []
+    private let recentEventsLimit = 10
+
+    private struct EventRecord {
+        let timestamp: Date
+        let line: String
+    }
+
+    private static let logger = Logger(subsystem: "com.ianwaters.RollingTodo4", category: "cloudsync")
 
     var statusTitle: String {
         switch status {
@@ -173,6 +193,7 @@ final class CloudSyncMonitor {
     private func handleEvent(_ notification: Notification) {
         guard let event = notification.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
                 as? NSPersistentCloudKitContainer.Event else { return }
+        record(event: event)
         if event.endDate == nil {
             status = .syncing
             return
@@ -183,7 +204,32 @@ final class CloudSyncMonitor {
         } else {
             status = .failed(message: humanReadable(event.error))
             lastErrorDiagnostics = diagnosticsDump(event.error)
+            Self.logger.error("CloudKit sync failed: \(self.humanReadable(event.error), privacy: .public)")
         }
+    }
+
+    private func record(event: NSPersistentCloudKitContainer.Event) {
+        let typeText: String = switch event.type {
+        case .setup:  "setup"
+        case .import: "import"
+        case .export: "export"
+        @unknown default: "event(\(event.type.rawValue))"
+        }
+        let outcome: String
+        if event.endDate == nil {
+            outcome = "started"
+        } else if event.succeeded {
+            outcome = "ok"
+        } else {
+            let nsErr = (event.error as NSError?)
+            outcome = "FAILED \(nsErr?.domain ?? "?") \(nsErr?.code ?? 0)"
+        }
+        let line = "[\(typeText)] \(outcome)"
+        recentEvents.append(EventRecord(timestamp: event.endDate ?? .now, line: line))
+        if recentEvents.count > recentEventsLimit {
+            recentEvents.removeFirst(recentEvents.count - recentEventsLimit)
+        }
+        Self.logger.info("event \(line, privacy: .public)")
     }
 
     private func humanReadable(_ error: Error?) -> String {
@@ -238,7 +284,17 @@ final class CloudSyncMonitor {
     private func partialFailureMessage(_ ck: CKError) -> String {
         let children = ck.partialErrorsByItemID ?? [:]
         if children.isEmpty {
-            return "Some records couldn't sync. iCloud didn't say which — open the diagnostics for the raw error."
+            // Empty partialFailure on macOS is almost always one of:
+            //  • Network reachability — VPN / corporate firewall blocks iCloud
+            //  • iCloud Drive disabled in System Settings (CloudKit needs it)
+            //  • Schema mismatch between Debug builds and the live container
+            //  • Stale local zone after a sign-out/sign-in
+            return "Sync stalled and iCloud didn't say why. On this machine, check: \n" +
+                   "  • iCloud Drive is on in System Settings → Apple ID → iCloud\n" +
+                   "  • RollingTodo is ticked in System Settings → Apple ID → iCloud → Apps Using iCloud\n" +
+                   "  • The network isn't behind a corporate proxy or VPN that blocks iCloud\n" +
+                   "  • The Mac's clock is correct (large skew breaks CloudKit)\n" +
+                   "Copy the full diagnostics for the recent event timeline."
         }
         let preview = children.prefix(3).map { (id, err) -> String in
             let idText = "\(id)"
@@ -252,34 +308,107 @@ final class CloudSyncMonitor {
     /// Verbose dump for the "Copy diagnostics" button. Multi-line, no PII —
     /// CKErrors don't include identifying content beyond opaque record IDs.
     private func diagnosticsDump(_ error: Error?) -> String {
-        guard let error else { return "No error attached." }
+        var lines: [String] = []
+        lines.append(contentsOf: environmentLines())
+        lines.append("")
+
+        if let error {
+            lines.append("=== Error chain ===")
+            lines.append(contentsOf: errorChainLines(error))
+        } else {
+            lines.append("=== Error ===")
+            lines.append("No error attached.")
+        }
+
+        lines.append("")
+        lines.append("=== Recent events (last \(recentEvents.count)) ===")
+        if recentEvents.isEmpty {
+            lines.append("No events recorded yet.")
+        } else {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            for entry in recentEvents.suffix(recentEventsLimit) {
+                lines.append("\(formatter.string(from: entry.timestamp)) \(entry.line)")
+            }
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private func environmentLines() -> [String] {
+        var lines = ["=== Environment ==="]
+        lines.append("Container: \(PersistenceController.cloudContainerID)")
+        lines.append("Sync ID: \(syncID ?? "—")")
+        lines.append("Captured at: \(Date.now.formatted(.iso8601))")
+        #if DEBUG
+        lines.append("Build: Debug (CloudKit development environment)")
+        #else
+        lines.append("Build: Release (CloudKit production environment)")
+        #endif
+        #if os(macOS)
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersion
+        lines.append("OS: macOS \(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)")
+        lines.append("Host: \(ProcessInfo.processInfo.hostName)")
+        #else
+        let osVersion = UIDevice.current.systemVersion
+        lines.append("OS: \(UIDevice.current.systemName) \(osVersion)")
+        lines.append("Device: \(UIDevice.current.model)")
+        #endif
+        return lines
+    }
+
+    /// Walks `NSUnderlyingErrorKey` and `partialErrorsByItemID` so the dump
+    /// shows the *actual* cause, not just the top-level wrapper. Indented per
+    /// depth so the chain is easy to read.
+    private func errorChainLines(_ error: Error, depth: Int = 0, maxDepth: Int = 6) -> [String] {
+        guard depth < maxDepth else { return [String(repeating: "  ", count: depth) + "(chain truncated)"] }
+        let pad = String(repeating: "  ", count: depth)
         var lines: [String] = []
         let ns = error as NSError
-        lines.append("Domain: \(ns.domain)")
-        lines.append("Code: \(ns.code)")
-        lines.append("Description: \(ns.localizedDescription)")
+        lines.append("\(pad)Domain: \(ns.domain)")
+        lines.append("\(pad)Code: \(ns.code)")
+        lines.append("\(pad)Description: \(ns.localizedDescription)")
         if let reason = ns.localizedFailureReason {
-            lines.append("Reason: \(reason)")
+            lines.append("\(pad)Reason: \(reason)")
         }
         if let suggestion = ns.localizedRecoverySuggestion {
-            lines.append("Suggestion: \(suggestion)")
+            lines.append("\(pad)Suggestion: \(suggestion)")
         }
-        if !ns.userInfo.isEmpty {
-            lines.append("UserInfo:")
-            for (key, value) in ns.userInfo where !(value is Error) && !(value is [AnyHashable: Error]) {
-                lines.append("  \(key): \(value)")
+        // Filter out keys we walk separately (errors).
+        let printable = ns.userInfo.filter { _, value in
+            !(value is Error) && !(value is [AnyHashable: Error]) && !(value is [Error])
+        }
+        if !printable.isEmpty {
+            lines.append("\(pad)UserInfo:")
+            for (key, value) in printable {
+                lines.append("\(pad)  \(key): \(value)")
+            }
+        }
+
+        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? Error {
+            lines.append("\(pad)Underlying:")
+            lines.append(contentsOf: errorChainLines(underlying, depth: depth + 1, maxDepth: maxDepth))
+        }
+        if #available(macOS 11.3, iOS 14.5, *),
+           let multiple = ns.userInfo[NSMultipleUnderlyingErrorsKey] as? [Error] {
+            lines.append("\(pad)Underlying (\(multiple.count)):")
+            for sub in multiple.prefix(3) {
+                lines.append(contentsOf: errorChainLines(sub, depth: depth + 1, maxDepth: maxDepth))
+            }
+            if multiple.count > 3 {
+                lines.append("\(pad)  …and \(multiple.count - 3) more.")
             }
         }
         if let ck = error as? CKError, let children = ck.partialErrorsByItemID, !children.isEmpty {
-            lines.append("Partial errors (first 5):")
+            lines.append("\(pad)Partial errors (\(children.count)):")
             for (id, err) in children.prefix(5) {
-                let childNS = err as NSError
-                lines.append("  \(id): \(childNS.domain) \(childNS.code) — \(childNS.localizedDescription)")
+                lines.append("\(pad)  \(id):")
+                lines.append(contentsOf: errorChainLines(err, depth: depth + 2, maxDepth: maxDepth))
             }
             if children.count > 5 {
-                lines.append("  …and \(children.count - 5) more.")
+                lines.append("\(pad)  …and \(children.count - 5) more.")
             }
         }
-        return lines.joined(separator: "\n")
+        return lines
     }
 }
