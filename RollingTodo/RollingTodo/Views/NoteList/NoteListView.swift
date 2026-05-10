@@ -316,8 +316,48 @@ struct FilteredNoteListView: View {
                 detail: "Try a different word.",
                 symbol: "magnifyingglass"
             )
-        } 
+        } else {
+            #if os(iOS)
+            emptyScopeState
+            #else
+            EmptyView()
+            #endif
+        }
     }
+
+    #if os(iOS)
+    @ViewBuilder
+    private var emptyScopeState: some View {
+        let copy = emptyScopeCopy
+        EditorialEmpty(
+            eyebrow: copy.eyebrow,
+            title: copy.title,
+            detail: copy.detail,
+            symbol: "doc.text"
+        ) {
+            Button(action: createNote) {
+                Label("New Note", systemImage: "square.and.pencil")
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 6)
+        }
+    }
+
+    private var emptyScopeCopy: (eyebrow: String, title: String, detail: String) {
+        switch scope {
+        case .all:
+            return ("Notes", "A blank page", "Tap below to start your first one.")
+        case .folder:
+            let name = currentFolder?.name.isEmpty == false ? currentFolder!.name : "Folder"
+            return (name, "An empty folder", "Add a note to fill it out.")
+        case .tag(let t):
+            return ("#\(t)", "Nothing tagged yet", "New notes here pre-fill #\(t).")
+        }
+    }
+    #endif
 
     private var focusBanner: some View {
         HStack(spacing: 10) {
