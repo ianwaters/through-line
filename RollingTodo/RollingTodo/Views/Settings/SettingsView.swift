@@ -30,6 +30,7 @@ struct SettingsView: View {
     @State private var building: Bool = false
     @State private var exportError: String?
     @State private var diagnosticsCopied: Bool = false
+    @State private var showDiagnostics: Bool = false
 
     var body: some View {
         Form {
@@ -270,7 +271,15 @@ struct SettingsView: View {
                 action: { Task { await cloudSync.refreshAccountStatus() } }
             )
 
-            if case .failed = cloudSync.status, cloudSync.lastErrorDiagnostics != nil {
+            DisclosureGroup(isExpanded: $showDiagnostics) {
+                cloudDiagnosticsBody
+            } label: {
+                Text("Diagnostics")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.inkMuted)
+            }
+
+            if cloudSync.lastErrorDiagnostics != nil {
                 Button(action: copyDiagnostics) {
                     Text(diagnosticsCopied ? "Copied" : "Copy diagnostics")
                 }
@@ -279,6 +288,207 @@ struct SettingsView: View {
             }
         } header: {
             Text("iCloud Sync").eyebrowStyle(tint: Color.inkMuted)
+        }
+    }
+
+    @ViewBuilder
+    private var cloudDiagnosticsBody: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            diagnosticRow("CloudKit env", value: cloudSync.cloudKitEnvironment,
+                          tint: cloudSync.cloudKitEnvironment == "Production" ? Color.editorialSage : Color.editorialAmber)
+            diagnosticRow("Container", value: PersistenceController.cloudContainerID, monospaced: true)
+            diagnosticRow("Ubiquity identity", value: cloudSync.hasUbiquityIdentity ? "Present" : "Missing",
+                          tint: cloudSync.hasUbiquityIdentity ? Color.editorialSage : Color.editorialAmber)
+            #if os(iOS)
+            diagnosticRow("Push authorization", value: cloudSync.pushAuthStatus,
+                          tint: cloudSync.pushAuthStatus == "Authorized" ? Color.editorialSage : Color.editorialAmber)
+            #endif
+
+            Divider().padding(.vertical, 2)
+
+            eventCountRow("Setup",  ok: cloudSync.setupSuccessCount,  fail: cloudSync.setupFailureCount,  lastOK: cloudSync.lastSetupSucceededAt)
+            eventCountRow("Import", ok: cloudSync.importSuccessCount, fail: cloudSync.importFailureCount, lastOK: cloudSync.lastImportSucceededAt)
+            eventCountRow("Export", ok: cloudSync.exportSuccessCount, fail: cloudSync.exportFailureCount, lastOK: cloudSync.lastExportSucceededAt)
+
+            if !cloudSync.recentEvents.isEmpty {
+                Divider().padding(.vertical, 2)
+                Text("Recent events")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.inkMuted)
+                ForEach(cloudSync.recentEvents.reversed()) { evt in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(evt.timestamp.formatted(date: .omitted, time: .standard))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Color.inkMuted)
+                        Text("[\(evt.type)] \(evt.outcome)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(evt.outcome.hasPrefix("FAILED") ? Color.editorialRed : Color.ink)
+                    }
+                }
+            } else {
+                Text("No CloudKit events recorded since launch. If this stays empty for more than a minute after the app is opened, the persistent container hasn't initialized — typically iCloud Drive is off, the app isn't ticked under Apps Using iCloud, or a network policy is blocking CloudKit.")
+                    .font(.editorialItalic(11))
+                    .foregroundStyle(Color.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider().padding(.vertical, 2)
+
+            HStack(spacing: 8) {
+                Button(action: { Task { await cloudSync.pingCloudKit() } }) {
+                    HStack(spacing: 6) {
+                        if case .running = cloudSync.pingPhase {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text(pingButtonLabel)
+                    }
+                }
+                .font(.system(size: 12))
+                .disabled(pingButtonDisabled)
+                Spacer(minLength: 0)
+            }
+            pingResultView
+        }
+        .padding(.top, 4)
+    }
+
+    private var pingButtonLabel: String {
+        switch cloudSync.pingPhase {
+        case .running: "Testing iCloud connection…"
+        default:       "Test iCloud connection"
+        }
+    }
+
+    private var pingButtonDisabled: Bool {
+        if case .running = cloudSync.pingPhase { return true }
+        return false
+    }
+
+    private var pingDetailTint: Color {
+        switch cloudSync.pingPhase {
+        case .ok: Color.editorialSage
+        case .failed: Color.editorialRed
+        default: Color.inkSoft
+        }
+    }
+
+    private func localNoteCount() -> Int {
+        (try? context.fetchCount(FetchDescriptor<Note>())) ?? -1
+    }
+
+    private func recordsDetail(local: Int, server: Int) -> String {
+        if local < 0 { return "Couldn't read local store." }
+        if local == server { return "Local store matches the server." }
+        if local < server {
+            let gap = server - local
+            return "Server holds \(gap) more record\(gap == 1 ? "" : "s") than this device has imported. The device is failing on the import side, not because the data is missing on iCloud."
+        }
+        let gap = local - server
+        return "Local store has \(gap) more record\(gap == 1 ? "" : "s") than the server can see. Either an export is pending or schema is mismatched."
+    }
+
+    @ViewBuilder
+    private var pingResultView: some View {
+        switch cloudSync.pingPhase {
+        case .idle, .running:
+            EmptyView()
+        case .failed(let msg):
+            Text("Ping failed: \(msg)")
+                .font(.editorialItalic(11))
+                .foregroundStyle(Color.editorialRed)
+                .fixedSize(horizontal: false, vertical: true)
+        case .ok(let report):
+            let local = localNoteCount()
+            let server = report.serverRecordCount
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Reached private database in \(report.durationMs)ms.")
+                    .font(.editorialItalic(11))
+                    .foregroundStyle(Color.editorialSage)
+
+                pingMetricRow(
+                    label: "Zones",
+                    value: "\(report.zoneNames.count)",
+                    detail: report.zoneNames.joined(separator: ", "),
+                    isHealthy: report.zoneNames.contains("com.apple.coredata.cloudkit.zone")
+                )
+                pingMetricRow(
+                    label: "Subscriptions",
+                    value: "\(report.subscriptionIDs.count)",
+                    detail: report.subscriptionIDs.isEmpty
+                        ? "None — without a subscription this device cannot receive silent push and will never auto-import remote changes. Sign out / in of iCloud or reinstall."
+                        : report.subscriptionIDs.joined(separator: ", "),
+                    isHealthy: !report.subscriptionIDs.isEmpty
+                )
+                if let server {
+                    pingMetricRow(
+                        label: "Records",
+                        value: "server \(server)\(report.serverRecordsTruncated ? "+" : "")  •  local \(local >= 0 ? "\(local)" : "?")",
+                        detail: recordsDetail(local: local, server: server),
+                        isHealthy: local == server
+                    )
+                } else {
+                    pingMetricRow(
+                        label: "Records",
+                        value: "—",
+                        detail: "SwiftData zone (com.apple.coredata.cloudkit.zone) is not present on the server. The container has not run a successful initial sync from this account.",
+                        isHealthy: false
+                    )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pingMetricRow(label: String, value: String, detail: String, isHealthy: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.inkMuted)
+                    .frame(width: 100, alignment: .leading)
+                Text(value)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(isHealthy ? Color.editorialSage : Color.editorialAmber)
+                    .textSelection(.enabled)
+                Spacer(minLength: 0)
+            }
+            Text(detail)
+                .font(.editorialItalic(11))
+                .foregroundStyle(Color.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 108)
+        }
+    }
+
+    @ViewBuilder
+    private func diagnosticRow(_ label: String, value: String, tint: Color? = nil, monospaced: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.inkMuted)
+                .frame(width: 130, alignment: .leading)
+            Text(value)
+                .font(.system(size: 11, design: monospaced ? .monospaced : .default))
+                .foregroundStyle(tint ?? Color.ink)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder
+    private func eventCountRow(_ label: String, ok: Int, fail: Int, lastOK: Date?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.inkMuted)
+                .frame(width: 130, alignment: .leading)
+            Text("ok \(ok)  •  fail \(fail)")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(ok > 0 ? Color.ink : Color.editorialAmber)
+            Spacer(minLength: 0)
+            Text(lastOK.map { $0.formatted(.relative(presentation: .named)) } ?? "never")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.inkSoft)
         }
     }
 

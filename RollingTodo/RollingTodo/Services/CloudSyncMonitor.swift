@@ -7,6 +7,7 @@ import os
 import AppKit
 #else
 import UIKit
+import UserNotifications
 #endif
 
 /// Observes CloudKit sync events and account state for the SwiftData container,
@@ -52,15 +53,82 @@ final class CloudSyncMonitor {
     private(set) var recheckPhase: RecheckPhase = .idle
     private var recheckResetTask: Task<Void, Never>?
 
+    /// Per-event-type telemetry. The most useful single signal when sync looks
+    /// "fine" but isn't moving data: if `lastImportSucceededAt` and
+    /// `lastExportSucceededAt` are both nil after the app has been open for a
+    /// while, the container has never actually completed a sync — different
+    /// problem than "sync failed".
+    private(set) var lastSetupSucceededAt: Date?
+    private(set) var lastImportSucceededAt: Date?
+    private(set) var lastExportSucceededAt: Date?
+    private(set) var setupSuccessCount: Int = 0
+    private(set) var importSuccessCount: Int = 0
+    private(set) var exportSuccessCount: Int = 0
+    private(set) var setupFailureCount: Int = 0
+    private(set) var importFailureCount: Int = 0
+    private(set) var exportFailureCount: Int = 0
+
+    /// True if the iCloud account is signed in at the OS level. Cheaper than a
+    /// CKContainer round-trip; nil when iCloud is signed out entirely.
+    private(set) var hasUbiquityIdentity: Bool = false
+
+    #if os(iOS)
+    private(set) var pushAuthStatus: String = "Unknown"
+    #endif
+
+    enum PingPhase: Equatable {
+        case idle
+        case running
+        case ok(report: PingReport)
+        case failed(message: String)
+    }
+
+    struct PingReport: Equatable {
+        let durationMs: Int
+        let zoneNames: [String]
+        let subscriptionIDs: [String]
+        /// Records visible on the server in the SwiftData mirror zone
+        /// (`com.apple.coredata.cloudkit.zone`). `nil` if the zone is missing
+        /// or the change fetch failed independently of zone enumeration.
+        let serverRecordCount: Int?
+        /// True when the change-fetch said `moreComing` — the count is the
+        /// first page only. For diagnostics this is fine; we just want
+        /// "non-zero" vs "zero".
+        let serverRecordsTruncated: Bool
+    }
+
+    /// Result of the synthetic CloudKit ping — bypasses SwiftData entirely.
+    /// If sync events never fire but ping succeeds, the persistent container
+    /// hasn't been kicked into life. If ping fails, raw CloudKit access is
+    /// broken on this device (network, account, or container permissions).
+    private(set) var pingPhase: PingPhase = .idle
+    private var pingResetTask: Task<Void, Never>?
+
     /// Ring buffer of the last 10 NSPersistentCloudKitContainer events. Useful
     /// when partialFailure errors land with empty userInfo — knowing whether
     /// imports/exports/setups succeeded around the failure is the only clue.
-    private var recentEvents: [EventRecord] = []
+    private(set) var recentEvents: [EventRecord] = []
     private let recentEventsLimit = 10
 
-    private struct EventRecord {
+    struct EventRecord: Identifiable {
+        let id = UUID()
         let timestamp: Date
-        let line: String
+        let type: String
+        let outcome: String
+        var line: String { "[\(type)] \(outcome)" }
+    }
+
+    /// "Production" or "Development" — which CloudKit environment the binary
+    /// is talking to. Driven by build configuration: Release ships against
+    /// Production, Debug against Development. Confirms at a glance that two
+    /// supposedly-identical Release builds aren't accidentally pointing at
+    /// different stores.
+    var cloudKitEnvironment: String {
+        #if DEBUG
+        return "Development"
+        #else
+        return "Production"
+        #endif
     }
 
     private static let logger = Logger(subsystem: "com.ianwaters.RollingTodo4", category: "cloudsync")
@@ -115,7 +183,27 @@ final class CloudSyncMonitor {
         Task { @MainActor [weak self] in
             await self?.refreshAccountStatus()
         }
+        #if os(iOS)
+        Task { @MainActor [weak self] in
+            await self?.refreshPushAuthStatus()
+        }
+        #endif
     }
+
+    #if os(iOS)
+    private func refreshPushAuthStatus() async {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        switch settings.authorizationStatus {
+        case .notDetermined: pushAuthStatus = "Not requested"
+        case .denied:        pushAuthStatus = "Denied"
+        case .authorized:    pushAuthStatus = "Authorized"
+        case .provisional:   pushAuthStatus = "Provisional"
+        case .ephemeral:     pushAuthStatus = "Ephemeral"
+        @unknown default:    pushAuthStatus = "Unknown"
+        }
+    }
+    #endif
 
     /// Re-queries the user's iCloud account. Drives the Re-check button — the
     /// `recheckPhase` flips to `.checking` for at least 250ms so the spinner is
@@ -143,7 +231,73 @@ final class CloudSyncMonitor {
         }
     }
 
+    /// Synthetic CloudKit probe — bypasses SwiftData and talks straight to
+    /// CKContainer. Reports zones, subscriptions, and server-side record count
+    /// in the SwiftData mirror zone. Used to distinguish three silent-stall
+    /// failure modes that all look the same to NSPersistentCloudKitContainer:
+    ///   • zero subscriptions → no silent-push path; device never gets
+    ///     notified of remote changes
+    ///   • subscriptions present but local count << server count → push or
+    ///     import is broken; data is there but the device can't pull it
+    ///   • server count == local count → sync genuinely up to date
+    func pingCloudKit() async {
+        pingResetTask?.cancel()
+        pingPhase = .running
+        let startedAt = Date()
+        do {
+            let container = CKContainer(identifier: PersistenceController.cloudContainerID)
+            let db = container.privateCloudDatabase
+
+            let zones = try await db.allRecordZones()
+            let subs = try await db.allSubscriptions()
+
+            let cdZoneID = CKRecordZone.ID(
+                zoneName: "com.apple.coredata.cloudkit.zone",
+                ownerName: CKCurrentUserDefaultName
+            )
+            var serverCount: Int? = nil
+            var truncated = false
+            if zones.contains(where: { $0.zoneID == cdZoneID }) {
+                let token: CKServerChangeToken? = nil
+                let result = try await db.recordZoneChanges(
+                    inZoneWith: cdZoneID,
+                    since: token
+                )
+                serverCount = result.modificationResultsByID.count
+                truncated = result.moreComing
+            }
+
+            let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            let report = PingReport(
+                durationMs: durationMs,
+                zoneNames: zones.map { $0.zoneID.zoneName }.sorted(),
+                subscriptionIDs: subs.map { $0.subscriptionID }.sorted(),
+                serverRecordCount: serverCount,
+                serverRecordsTruncated: truncated
+            )
+            pingPhase = .ok(report: report)
+            Self.logger.info(
+                "ping ok: zones=\(zones.count, privacy: .public) subs=\(subs.count, privacy: .public) serverRecs=\(serverCount ?? -1, privacy: .public) in \(durationMs, privacy: .public)ms"
+            )
+        } catch {
+            pingPhase = .failed(message: humanReadable(error))
+            lastErrorDiagnostics = diagnosticsDump(error)
+            Self.logger.error("ping failed: \(self.humanReadable(error), privacy: .public)")
+        }
+        // Hold the result on screen until dismissed — too much info to skim
+        // away after a few seconds.
+        pingResetTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(60))
+            if Task.isCancelled { return }
+            self?.pingPhase = .idle
+        }
+    }
+
     private func performAccountRefresh() async {
+        hasUbiquityIdentity = FileManager.default.ubiquityIdentityToken != nil
+        #if os(iOS)
+        await refreshPushAuthStatus()
+        #endif
         do {
             let container = CKContainer(identifier: PersistenceController.cloudContainerID)
             let accountStatus = try await container.accountStatus()
@@ -200,8 +354,27 @@ final class CloudSyncMonitor {
         }
         if event.succeeded {
             lastSuccessfulSyncAt = event.endDate
+            switch event.type {
+            case .setup:
+                lastSetupSucceededAt = event.endDate
+                setupSuccessCount += 1
+            case .import:
+                lastImportSucceededAt = event.endDate
+                importSuccessCount += 1
+            case .export:
+                lastExportSucceededAt = event.endDate
+                exportSuccessCount += 1
+            @unknown default:
+                break
+            }
             status = .ready
         } else {
+            switch event.type {
+            case .setup:  setupFailureCount += 1
+            case .import: importFailureCount += 1
+            case .export: exportFailureCount += 1
+            @unknown default: break
+            }
             status = .failed(message: humanReadable(event.error))
             lastErrorDiagnostics = diagnosticsDump(event.error)
             Self.logger.error("CloudKit sync failed: \(self.humanReadable(event.error), privacy: .public)")
@@ -224,12 +397,12 @@ final class CloudSyncMonitor {
             let nsErr = (event.error as NSError?)
             outcome = "FAILED \(nsErr?.domain ?? "?") \(nsErr?.code ?? 0)"
         }
-        let line = "[\(typeText)] \(outcome)"
-        recentEvents.append(EventRecord(timestamp: event.endDate ?? .now, line: line))
+        let entry = EventRecord(timestamp: event.endDate ?? .now, type: typeText, outcome: outcome)
+        recentEvents.append(entry)
         if recentEvents.count > recentEventsLimit {
             recentEvents.removeFirst(recentEvents.count - recentEventsLimit)
         }
-        Self.logger.info("event \(line, privacy: .public)")
+        Self.logger.info("event \(entry.line, privacy: .public)")
     }
 
     private func humanReadable(_ error: Error?) -> String {
@@ -338,12 +511,14 @@ final class CloudSyncMonitor {
     private func environmentLines() -> [String] {
         var lines = ["=== Environment ==="]
         lines.append("Container: \(PersistenceController.cloudContainerID)")
+        lines.append("CloudKit env: \(cloudKitEnvironment)")
         lines.append("Sync ID: \(syncID ?? "—")")
+        lines.append("Ubiquity identity present: \(hasUbiquityIdentity)")
         lines.append("Captured at: \(Date.now.formatted(.iso8601))")
         #if DEBUG
-        lines.append("Build: Debug (CloudKit development environment)")
+        lines.append("Build: Debug")
         #else
-        lines.append("Build: Release (CloudKit production environment)")
+        lines.append("Build: Release")
         #endif
         #if os(macOS)
         let osVersion = ProcessInfo.processInfo.operatingSystemVersion
@@ -353,8 +528,21 @@ final class CloudSyncMonitor {
         let osVersion = UIDevice.current.systemVersion
         lines.append("OS: \(UIDevice.current.systemName) \(osVersion)")
         lines.append("Device: \(UIDevice.current.model)")
+        lines.append("Push authorization: \(pushAuthStatus)")
         #endif
+        lines.append("")
+        lines.append("=== Event totals ===")
+        lines.append("setup  ok:\(setupSuccessCount) fail:\(setupFailureCount) last-ok:\(formatDate(lastSetupSucceededAt))")
+        lines.append("import ok:\(importSuccessCount) fail:\(importFailureCount) last-ok:\(formatDate(lastImportSucceededAt))")
+        lines.append("export ok:\(exportSuccessCount) fail:\(exportFailureCount) last-ok:\(formatDate(lastExportSucceededAt))")
         return lines
+    }
+
+    private func formatDate(_ date: Date?) -> String {
+        guard let date else { return "never" }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.string(from: date)
     }
 
     /// Walks `NSUnderlyingErrorKey` and `partialErrorsByItemID` so the dump
