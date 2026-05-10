@@ -10,6 +10,13 @@ import SwiftData
 
 @main
 struct RollingTodoApp: App {
+    @MainActor
+    init() {
+        // Eagerly initialise the sync monitor so its NSPersistentCloudKitContainer
+        // event observer is attached before the first sync events fire.
+        _ = CloudSyncMonitor.shared
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

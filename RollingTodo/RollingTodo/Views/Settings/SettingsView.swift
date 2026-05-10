@@ -22,6 +22,7 @@ struct SettingsView: View {
 
     @State private var calendarService = CalendarEventsService.shared
     @State private var intelligence = IntelligenceService.shared
+    @State private var cloudSync = CloudSyncMonitor.shared
 
     @State private var exportDocument: ExportDocument?
     @State private var showExporter: Bool = false
@@ -46,6 +47,8 @@ struct SettingsView: View {
             calendarEventsSection
 
             intelligenceStatusSection
+
+            cloudSyncStatusSection
 
             Section {
                 Picker("Due within", selection: $focusDueWindow) {
@@ -215,6 +218,37 @@ struct SettingsView: View {
                 .font(.system(size: 12))
         } header: {
             Text("Apple Intelligence").eyebrowStyle(tint: Color.inkMuted)
+        }
+    }
+
+    @ViewBuilder
+    private var cloudSyncStatusSection: some View {
+        Section {
+            HStack(alignment: .top, spacing: 10) {
+                Circle()
+                    .fill(cloudSync.isHealthy ? Color.editorialSage : Color.editorialAmber)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 5)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(cloudSync.statusTitle)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.ink)
+                    Text(cloudSync.statusNote)
+                        .font(.editorialItalic(12))
+                        .foregroundStyle(Color.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Button("Re-check") {
+                Task { await cloudSync.refreshAccountStatus() }
+            }
+            .font(.system(size: 12))
+        } header: {
+            Text("iCloud Sync").eyebrowStyle(tint: Color.inkMuted)
         }
     }
 

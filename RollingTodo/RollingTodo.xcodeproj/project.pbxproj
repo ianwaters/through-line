@@ -6,11 +6,47 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		8A04A4FF2FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8A04A4F52FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		8A04A4FD2FB06CA700460379 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8AF178DD2FAF1BCD0035B75F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8A04A4F42FB06CA700460379;
+			remoteInfo = com.ianwaters.RollingTodo4.ShareExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		8A04A5002FB06CA700460379 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				8A04A4FF2FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		8A04A4F52FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = com.ianwaters.RollingTodo4.ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8AF178E52FAF1BCD0035B75F /* RollingTodo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RollingTodo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8A04A5042FB06CA700460379 /* Exceptions for "com.ianwaters.RollingTodo4.ShareExtension" folder in "com.ianwaters.RollingTodo4.ShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8A04A4F42FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension */;
+		};
 		8AF178F42FAF1C500035B75F /* Exceptions for "RollingTodo" folder in "RollingTodo" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -21,6 +57,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		8A04A4F62FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8A04A5042FB06CA700460379 /* Exceptions for "com.ianwaters.RollingTodo4.ShareExtension" folder in "com.ianwaters.RollingTodo4.ShareExtension" target */,
+			);
+			path = com.ianwaters.RollingTodo4.ShareExtension;
+			sourceTree = "<group>";
+		};
 		8AF178E72FAF1BCD0035B75F /* RollingTodo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -32,6 +76,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		8A04A4F22FB06CA700460379 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8AF178E22FAF1BCD0035B75F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -46,6 +97,7 @@
 			isa = PBXGroup;
 			children = (
 				8AF178E72FAF1BCD0035B75F /* RollingTodo */,
+				8A04A4F62FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension */,
 				8AF178E62FAF1BCD0035B75F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				8AF178E52FAF1BCD0035B75F /* RollingTodo.app */,
+				8A04A4F52FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,6 +114,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		8A04A4F42FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8A04A5032FB06CA700460379 /* Build configuration list for PBXNativeTarget "com.ianwaters.RollingTodo4.ShareExtension" */;
+			buildPhases = (
+				8A04A4F12FB06CA700460379 /* Sources */,
+				8A04A4F22FB06CA700460379 /* Frameworks */,
+				8A04A4F32FB06CA700460379 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				8A04A4F62FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension */,
+			);
+			name = com.ianwaters.RollingTodo4.ShareExtension;
+			packageProductDependencies = (
+			);
+			productName = com.ianwaters.RollingTodo4.ShareExtension;
+			productReference = 8A04A4F52FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		8AF178E42FAF1BCD0035B75F /* RollingTodo */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8AF178F02FAF1BCE0035B75F /* Build configuration list for PBXNativeTarget "RollingTodo" */;
@@ -68,10 +143,12 @@
 				8AF178E12FAF1BCD0035B75F /* Sources */,
 				8AF178E22FAF1BCD0035B75F /* Frameworks */,
 				8AF178E32FAF1BCD0035B75F /* Resources */,
+				8A04A5002FB06CA700460379 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				8A04A4FE2FB06CA700460379 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8AF178E72FAF1BCD0035B75F /* RollingTodo */,
@@ -93,6 +170,9 @@
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					8A04A4F42FB06CA700460379 = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
 					8AF178E42FAF1BCD0035B75F = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
@@ -113,11 +193,19 @@
 			projectRoot = "";
 			targets = (
 				8AF178E42FAF1BCD0035B75F /* RollingTodo */,
+				8A04A4F42FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		8A04A4F32FB06CA700460379 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8AF178E32FAF1BCD0035B75F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -128,6 +216,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		8A04A4F12FB06CA700460379 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8AF178E12FAF1BCD0035B75F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -137,7 +232,79 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		8A04A4FE2FB06CA700460379 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilter = ios;
+			target = 8A04A4F42FB06CA700460379 /* com.ianwaters.RollingTodo4.ShareExtension */;
+			targetProxy = 8A04A4FD2FB06CA700460379 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		8A04A5012FB06CA700460379 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = com.ianwaters.RollingTodo4.ShareExtension/com.ianwaters.RollingTodo4.ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZP8HDDQ93L;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = com.ianwaters.RollingTodo4.ShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = com.ianwaters.RollingTodo4.ShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.ianwaters.RollingTodo4.com-ianwaters-RollingTodo4-ShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		8A04A5022FB06CA700460379 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = com.ianwaters.RollingTodo4.ShareExtension/com.ianwaters.RollingTodo4.ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = ZP8HDDQ93L;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = com.ianwaters.RollingTodo4.ShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = com.ianwaters.RollingTodo4.ShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.ianwaters.RollingTodo4.com-ianwaters-RollingTodo4-ShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		8AF178EE2FAF1BCE0035B75F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -395,6 +562,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		8A04A5032FB06CA700460379 /* Build configuration list for PBXNativeTarget "com.ianwaters.RollingTodo4.ShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8A04A5012FB06CA700460379 /* Debug */,
+				8A04A5022FB06CA700460379 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		8AF178E02FAF1BCD0035B75F /* Build configuration list for PBXProject "RollingTodo" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
