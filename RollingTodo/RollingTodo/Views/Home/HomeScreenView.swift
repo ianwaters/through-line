@@ -1,6 +1,12 @@
 import SwiftUI
 import SwiftData
 
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
+
 struct HomeScreenView: View {
     var onOpenNote: ((UUID) -> Void)? = nil
 
@@ -18,10 +24,12 @@ struct HomeScreenView: View {
 
     @State private var calendarService = CalendarEventsService.shared
     @State private var intelligence = IntelligenceService.shared
+    @State private var cloudSync = CloudSyncMonitor.shared
 
     @State private var confirmingDeleteCancelled: Bool = false
     @State private var summaryState: SummaryState = .pending
     @State private var lastSummaryGeneratedAt: Date = .distantPast
+    @State private var diagnosticsCopied: Bool = false
 
     private enum SummaryState: Equatable {
         case pending             // never tried — assume AI is coming
@@ -227,6 +235,11 @@ struct HomeScreenView: View {
                 }
 
                 quickActions
+
+                if showSyncIssueBanner {
+                    syncIssueBanner
+                        .padding(.top, isCompact ? 32 : 56)
+                }
             }
             .padding(.horizontal, isCompact ? 24 : 64)
             .padding(.vertical, isCompact ? 32 : 72)
@@ -357,6 +370,123 @@ struct HomeScreenView: View {
 
     private var cleanupTotal: Int {
         overdue.count + done.count + cancelled.count
+    }
+
+    // MARK: - Sync issue banner
+
+    private var showSyncIssueBanner: Bool {
+        switch cloudSync.status {
+        case .failed, .noAccount: return true
+        case .ready, .syncing, .unknown: return false
+        }
+    }
+
+    private var syncIssueBanner: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Sync Issue").eyebrowStyle(tint: Color.editorialAmber)
+                Spacer()
+                Circle()
+                    .fill(Color.editorialAmber)
+                    .frame(width: 8, height: 8)
+            }
+
+            Text(cloudSync.statusTitle)
+                .font(.editorialDisplay(20, weight: .medium))
+                .foregroundStyle(Color.ink)
+
+            Text(cloudSync.statusNote)
+                .font(.editorialItalic(14))
+                .foregroundStyle(Color.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                ForEach(syncIssueActions, id: \.id) { action in
+                    Button(action: action.handler) {
+                        Text(action.label)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color.ink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(
+                                Capsule().fill(Color.secondary.opacity(0.10))
+                            )
+                            .overlay(
+                                Capsule().strokeBorder(Color.inkHairline, lineWidth: 0.5)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.editorialAmber.opacity(0.06), in: .rect(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.editorialAmber.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    private struct SyncIssueAction: Identifiable {
+        let id = UUID()
+        let label: String
+        let handler: () -> Void
+    }
+
+    private var syncIssueActions: [SyncIssueAction] {
+        var actions: [SyncIssueAction] = []
+        switch cloudSync.status {
+        case .noAccount:
+            actions.append(SyncIssueAction(label: "Open System Settings") { openICloudSettings() })
+            actions.append(SyncIssueAction(label: "Re-check") {
+                Task { await cloudSync.refreshAccountStatus() }
+            })
+        case .failed(let message):
+            if message.lowercased().contains("storage is full") {
+                actions.append(SyncIssueAction(label: "Manage iCloud Storage") { openICloudSettings() })
+            }
+            actions.append(SyncIssueAction(label: "Re-check") {
+                Task { await cloudSync.refreshAccountStatus() }
+            })
+            if cloudSync.lastErrorDiagnostics != nil {
+                actions.append(SyncIssueAction(label: diagnosticsCopied ? "Copied" : "Copy diagnostics") {
+                    copyDiagnostics()
+                })
+            }
+        case .ready, .syncing, .unknown:
+            break
+        }
+        return actions
+    }
+
+    private func openICloudSettings() {
+        #if os(macOS)
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preferences.AppleIDPrefPane") {
+            NSWorkspace.shared.open(url)
+        }
+        #else
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+        #endif
+    }
+
+    private func copyDiagnostics() {
+        guard let text = cloudSync.lastErrorDiagnostics else { return }
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #else
+        UIPasteboard.general.string = text
+        #endif
+        diagnosticsCopied = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            diagnosticsCopied = false
+        }
     }
 
     @ViewBuilder

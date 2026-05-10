@@ -60,7 +60,12 @@ struct ContentView: View {
                         sidebarSelection: sidebarSelection,
                         tab: tab,
                         noteSelection: $noteSelection,
-                        searchText: $searchText
+                        searchText: $searchText,
+                        focusModeEnabled: $focusModeEnabled,
+                        intelligenceAvailable: intelligence.isAvailable,
+                        onQuickCapture: { showingQuickCapture = true },
+                        onAINote: { showingAIComposer = true },
+                        onSettings: openSettingsTapped
                     )
                 }
             }
@@ -69,17 +74,6 @@ struct ContentView: View {
                 ideal: isHome ? 0 : 280,
                 max: isHome ? 0 : 480
             )
-            #if os(iOS)
-            .toolbar {
-                AppPrimaryToolbar(
-                    focusModeEnabled: $focusModeEnabled,
-                    onQuickCapture: { showingQuickCapture = true },
-                    onAINote: { showingAIComposer = true },
-                    onSettings: openSettingsTapped,
-                    intelligenceAvailable: intelligence.isAvailable
-                )
-            }
-            #endif
         } detail: {
             Group {
                 if isHome {
@@ -89,9 +83,23 @@ struct ContentView: View {
                         homeView
                     }
                 } else if noteSelection != nil {
-                    NoteEditorView(noteID: noteSelection)
+                    NoteEditorView(
+                        noteID: noteSelection,
+                        focusModeEnabled: $focusModeEnabled,
+                        intelligenceAvailable: intelligence.isAvailable,
+                        onQuickCapture: { showingQuickCapture = true },
+                        onAINote: { showingAIComposer = true },
+                        onSettings: openSettingsTapped
+                    )
                 } else if tab == .archive {
                     ArchiveEmptyDetail()
+                        .modifier(IOSPrimaryToolbarFallback(
+                            focusModeEnabled: $focusModeEnabled,
+                            intelligenceAvailable: intelligence.isAvailable,
+                            onQuickCapture: { showingQuickCapture = true },
+                            onAINote: { showingAIComposer = true },
+                            onSettings: openSettingsTapped
+                        ))
                 } else {
                     EditorialEmpty(
                         eyebrow: "Editor",
@@ -109,19 +117,15 @@ struct ContentView: View {
                         .keyboardShortcut("n", modifiers: .command)
                         .padding(.top, 6)
                     }
+                    .modifier(IOSPrimaryToolbarFallback(
+                        focusModeEnabled: $focusModeEnabled,
+                        intelligenceAvailable: intelligence.isAvailable,
+                        onQuickCapture: { showingQuickCapture = true },
+                        onAINote: { showingAIComposer = true },
+                        onSettings: openSettingsTapped
+                    ))
                 }
             }
-            #if os(iOS)
-            .toolbar {
-                AppPrimaryToolbar(
-                    focusModeEnabled: $focusModeEnabled,
-                    onQuickCapture: { showingQuickCapture = true },
-                    onAINote: { showingAIComposer = true },
-                    onSettings: openSettingsTapped,
-                    intelligenceAvailable: intelligence.isAvailable
-                )
-            }
-            #endif
         }
         #if os(macOS)
         .toolbar {

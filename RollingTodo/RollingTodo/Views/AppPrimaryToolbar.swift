@@ -41,3 +41,31 @@ struct AppPrimaryToolbar: ToolbarContent {
         }
     }
 }
+
+/// On iOS, attaches `AppPrimaryToolbar` to the underlying view. On macOS it's
+/// a no-op — the macOS toolbar lives at the NavigationSplitView root. Used by
+/// detail-column placeholders (empty editor, archive empty) so the primary
+/// actions stay reachable when no note is selected on iPad.
+struct IOSPrimaryToolbarFallback: ViewModifier {
+    @Binding var focusModeEnabled: Bool
+    let intelligenceAvailable: Bool
+    let onQuickCapture: () -> Void
+    let onAINote: () -> Void
+    let onSettings: () -> Void
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content.toolbar {
+            AppPrimaryToolbar(
+                focusModeEnabled: $focusModeEnabled,
+                onQuickCapture: onQuickCapture,
+                onAINote: onAINote,
+                onSettings: onSettings,
+                intelligenceAvailable: intelligenceAvailable
+            )
+        }
+        #else
+        content
+        #endif
+    }
+}

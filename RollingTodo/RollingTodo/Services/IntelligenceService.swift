@@ -11,6 +11,17 @@ final class IntelligenceService {
 
     private(set) var availability: SystemLanguageModel.Availability = .unavailable(.modelNotReady)
 
+    /// Mirrors `CloudSyncMonitor.RecheckPhase` so the Settings re-check button
+    /// can show the same spinner / "Result unchanged" / "Updated" feedback.
+    enum RecheckPhase: Equatable {
+        case idle
+        case checking
+        case settled(unchanged: Bool)
+    }
+
+    private(set) var recheckPhase: RecheckPhase = .idle
+    private var recheckResetTask: Task<Void, Never>?
+
     var isAvailable: Bool {
         if case .available = availability { return true }
         return false
@@ -45,6 +56,33 @@ final class IntelligenceService {
 
     func refreshAvailability() {
         availability = SystemLanguageModel.default.availability
+    }
+
+    /// Re-checks availability and drives the Settings button feedback. The
+    /// underlying read is synchronous; we hold `.checking` for ~250ms so the
+    /// spinner is always visible.
+    func recheckAvailability() async {
+        recheckResetTask?.cancel()
+        let priorIsAvailable = isAvailable
+        let priorNote = availabilityNote
+        recheckPhase = .checking
+        let startedAt = Date()
+
+        availability = SystemLanguageModel.default.availability
+
+        let elapsed = Date().timeIntervalSince(startedAt)
+        let minSpinnerDuration: TimeInterval = 0.25
+        if elapsed < minSpinnerDuration {
+            try? await Task.sleep(for: .milliseconds(Int((minSpinnerDuration - elapsed) * 1000)))
+        }
+
+        let unchanged = priorIsAvailable == isAvailable && priorNote == availabilityNote
+        recheckPhase = .settled(unchanged: unchanged)
+        recheckResetTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(1500))
+            if Task.isCancelled { return }
+            self?.recheckPhase = .idle
+        }
     }
 
     // MARK: - Smart title

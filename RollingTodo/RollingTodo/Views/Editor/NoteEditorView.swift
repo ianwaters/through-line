@@ -3,11 +3,29 @@ import SwiftData
 
 struct NoteEditorView: View {
     let noteID: UUID?
+    @Binding var focusModeEnabled: Bool
+    let intelligenceAvailable: Bool
+    let onQuickCapture: () -> Void
+    let onAINote: () -> Void
+    let onSettings: () -> Void
+
     @Query private var noteResults: [Note]
     @Environment(UnlockSession.self) private var unlockSession
 
-    init(noteID: UUID?) {
+    init(
+        noteID: UUID?,
+        focusModeEnabled: Binding<Bool>,
+        intelligenceAvailable: Bool,
+        onQuickCapture: @escaping () -> Void,
+        onAINote: @escaping () -> Void,
+        onSettings: @escaping () -> Void
+    ) {
         self.noteID = noteID
+        self._focusModeEnabled = focusModeEnabled
+        self.intelligenceAvailable = intelligenceAvailable
+        self.onQuickCapture = onQuickCapture
+        self.onAINote = onAINote
+        self.onSettings = onSettings
         if let id = noteID {
             self._noteResults = Query(filter: #Predicate<Note> { $0.id == id })
         } else {
@@ -16,17 +34,26 @@ struct NoteEditorView: View {
     }
 
     var body: some View {
-        if let note = noteResults.first {
-            if note.isLocked && !unlockSession.isUnlocked(note.id) {
-                LockedNoteView(note: note)
-                    .id(note.id)
+        Group {
+            if let note = noteResults.first {
+                if note.isLocked && !unlockSession.isUnlocked(note.id) {
+                    LockedNoteView(note: note)
+                        .id(note.id)
+                } else {
+                    NoteEditorContent(note: note)
+                        .id(note.id)
+                }
             } else {
-                NoteEditorContent(note: note)
-                    .id(note.id)
+                Color.clear
             }
-        } else {
-            Color.clear
         }
+        .modifier(IOSPrimaryToolbarFallback(
+            focusModeEnabled: $focusModeEnabled,
+            intelligenceAvailable: intelligenceAvailable,
+            onQuickCapture: onQuickCapture,
+            onAINote: onAINote,
+            onSettings: onSettings
+        ))
     }
 }
 
@@ -281,18 +308,34 @@ private struct SavedIndicator: View {
 
 #Preview("With note") {
     @Previewable @State var noteID: UUID?
+    @Previewable @State var focus: Bool = false
     let container = PersistenceController.preview
     let descriptor = FetchDescriptor<Note>(predicate: #Predicate { $0.title == "Ship v1 to TestFlight" })
     let note = try! container.mainContext.fetch(descriptor).first!
     return NavigationStack {
-        NoteEditorView(noteID: note.id)
+        NoteEditorView(
+            noteID: note.id,
+            focusModeEnabled: $focus,
+            intelligenceAvailable: false,
+            onQuickCapture: {},
+            onAINote: {},
+            onSettings: {}
+        )
     }
     .modelContainer(container)
 }
 
 #Preview("Empty") {
+    @Previewable @State var focus: Bool = false
     NavigationStack {
-        NoteEditorView(noteID: nil)
+        NoteEditorView(
+            noteID: nil,
+            focusModeEnabled: $focus,
+            intelligenceAvailable: false,
+            onQuickCapture: {},
+            onAINote: {},
+            onSettings: {}
+        )
     }
     .modelContainer(PersistenceController.preview)
 }

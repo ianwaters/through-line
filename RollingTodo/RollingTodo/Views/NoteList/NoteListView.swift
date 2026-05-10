@@ -6,6 +6,11 @@ struct NoteListView: View {
     let tab: AppTab
     @Binding var noteSelection: UUID?
     @Binding var searchText: String
+    @Binding var focusModeEnabled: Bool
+    let intelligenceAvailable: Bool
+    let onQuickCapture: () -> Void
+    let onAINote: () -> Void
+    let onSettings: () -> Void
 
     var body: some View {
         switch sidebarSelection {
@@ -18,15 +23,46 @@ struct NoteListView: View {
                 detail: "Choose a folder or tag from the sidebar.",
                 symbol: "sidebar.leading"
             )
+            .modifier(IOSPrimaryToolbarFallback(
+                focusModeEnabled: $focusModeEnabled,
+                intelligenceAvailable: intelligenceAvailable,
+                onQuickCapture: onQuickCapture,
+                onAINote: onAINote,
+                onSettings: onSettings
+            ))
         case .allNotes:
-            FilteredNoteListView(tab: tab, scope: .all, noteSelection: $noteSelection, searchText: $searchText)
-                .id("\(tab.rawValue)-all")
+            FilteredNoteListView(
+                tab: tab, scope: .all,
+                noteSelection: $noteSelection, searchText: $searchText,
+                focusModeEnabled: $focusModeEnabled,
+                intelligenceAvailable: intelligenceAvailable,
+                onQuickCapture: onQuickCapture,
+                onAINote: onAINote,
+                onSettings: onSettings
+            )
+            .id("\(tab.rawValue)-all")
         case .folder(let id):
-            FilteredNoteListView(tab: tab, scope: .folder(id), noteSelection: $noteSelection, searchText: $searchText)
-                .id("\(tab.rawValue)-folder-\(id)")
+            FilteredNoteListView(
+                tab: tab, scope: .folder(id),
+                noteSelection: $noteSelection, searchText: $searchText,
+                focusModeEnabled: $focusModeEnabled,
+                intelligenceAvailable: intelligenceAvailable,
+                onQuickCapture: onQuickCapture,
+                onAINote: onAINote,
+                onSettings: onSettings
+            )
+            .id("\(tab.rawValue)-folder-\(id)")
         case .tag(let t):
-            FilteredNoteListView(tab: tab, scope: .tag(t), noteSelection: $noteSelection, searchText: $searchText)
-                .id("\(tab.rawValue)-tag-\(t)")
+            FilteredNoteListView(
+                tab: tab, scope: .tag(t),
+                noteSelection: $noteSelection, searchText: $searchText,
+                focusModeEnabled: $focusModeEnabled,
+                intelligenceAvailable: intelligenceAvailable,
+                onQuickCapture: onQuickCapture,
+                onAINote: onAINote,
+                onSettings: onSettings
+            )
+            .id("\(tab.rawValue)-tag-\(t)")
         }
     }
 }
@@ -36,6 +72,11 @@ struct FilteredNoteListView: View {
     let scope: NoteListScope
     @Binding var noteSelection: UUID?
     @Binding var searchText: String
+    @Binding var focusModeEnabledExternal: Bool
+    let intelligenceAvailable: Bool
+    let onQuickCapture: () -> Void
+    let onAINote: () -> Void
+    let onSettings: () -> Void
 
     @Environment(\.modelContext) private var context
     @Query private var notes: [Note]
@@ -60,11 +101,26 @@ struct FilteredNoteListView: View {
         return "noteSort.\(tab.rawValue).\(scopeKey)"
     }
 
-    init(tab: AppTab, scope: NoteListScope, noteSelection: Binding<UUID?>, searchText: Binding<String>) {
+    init(
+        tab: AppTab,
+        scope: NoteListScope,
+        noteSelection: Binding<UUID?>,
+        searchText: Binding<String>,
+        focusModeEnabled: Binding<Bool>,
+        intelligenceAvailable: Bool,
+        onQuickCapture: @escaping () -> Void,
+        onAINote: @escaping () -> Void,
+        onSettings: @escaping () -> Void
+    ) {
         self.tab = tab
         self.scope = scope
         self._noteSelection = noteSelection
         self._searchText = searchText
+        self._focusModeEnabledExternal = focusModeEnabled
+        self.intelligenceAvailable = intelligenceAvailable
+        self.onQuickCapture = onQuickCapture
+        self.onAINote = onAINote
+        self.onSettings = onSettings
 
         let archived = tab == .archive
         let predicate: Predicate<Note>
@@ -209,6 +265,15 @@ struct FilteredNoteListView: View {
                 .keyboardShortcut("n", modifiers: .command)
                 .disabled(tab == .archive)
             }
+            #if os(iOS)
+            AppPrimaryToolbar(
+                focusModeEnabled: $focusModeEnabledExternal,
+                onQuickCapture: onQuickCapture,
+                onAINote: onAINote,
+                onSettings: onSettings,
+                intelligenceAvailable: intelligenceAvailable
+            )
+            #endif
         }
         .onAppear(perform: loadSort)
         .onChange(of: sort) { _, _ in saveSort() }

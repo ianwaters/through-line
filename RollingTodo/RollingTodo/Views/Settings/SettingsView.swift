@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage("focusDueWindow") private var focusDueWindow: FocusDueWindow = .thisWeek
     @AppStorage("focusPriorityFloor") private var focusPriorityFloor: FocusPriorityFloor = .highOrUrgent
     @AppStorage("calendarEventsEnabled") private var calendarEventsEnabled: Bool = false
+    @AppStorage("hideAccountIdentifier") private var hideAccountIdentifier: Bool = false
 
     @State private var calendarService = CalendarEventsService.shared
     @State private var intelligence = IntelligenceService.shared
@@ -28,6 +29,7 @@ struct SettingsView: View {
     @State private var showExporter: Bool = false
     @State private var building: Bool = false
     @State private var exportError: String?
+    @State private var diagnosticsCopied: Bool = false
 
     var body: some View {
         Form {
@@ -214,8 +216,11 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
             }
 
-            Button("Re-check") { intelligence.refreshAvailability() }
-                .font(.system(size: 12))
+            recheckButton(
+                phase: intelligence.recheckPhase,
+                idleLabel: "Re-check",
+                action: { Task { await intelligence.recheckAvailability() } }
+            )
         } header: {
             Text("Apple Intelligence").eyebrowStyle(tint: Color.inkMuted)
         }
@@ -243,12 +248,125 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
             }
 
-            Button("Re-check") {
-                Task { await cloudSync.refreshAccountStatus() }
+            if let id = cloudSync.syncID {
+                HStack(spacing: 10) {
+                    Text("Sync ID")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.inkMuted)
+                    Text(hideAccountIdentifier ? "•••••••" : id)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Color.ink)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 0)
+                }
             }
-            .font(.system(size: 12))
+
+            Toggle("Hide identifier", isOn: $hideAccountIdentifier)
+                .font(.system(size: 12))
+
+            recheckButton(
+                phase: cloudSync.recheckPhase,
+                idleLabel: "Re-check",
+                action: { Task { await cloudSync.refreshAccountStatus() } }
+            )
+
+            if case .failed = cloudSync.status, cloudSync.lastErrorDiagnostics != nil {
+                Button(action: copyDiagnostics) {
+                    Text(diagnosticsCopied ? "Copied" : "Copy diagnostics")
+                }
+                .font(.system(size: 12))
+                .disabled(diagnosticsCopied)
+            }
         } header: {
             Text("iCloud Sync").eyebrowStyle(tint: Color.inkMuted)
+        }
+    }
+
+    @ViewBuilder
+    private func recheckButton<P: Equatable>(
+        phase: P,
+        idleLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        // Translate either RecheckPhase enum into a uniform UI state via the
+        // `recheckPhaseDescription` helper below — we accept `Any` here because
+        // CloudSyncMonitor.RecheckPhase and IntelligenceService.RecheckPhase
+        // are structurally identical but distinct types.
+        let descriptor = recheckPhaseDescriptor(phase)
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if descriptor.showSpinner {
+                    ProgressView().controlSize(.small)
+                }
+                Text(descriptor.label.isEmpty ? idleLabel : descriptor.label)
+                    .foregroundStyle(descriptor.tint ?? Color.accentColor)
+            }
+        }
+        .font(.system(size: 12))
+        .disabled(descriptor.disabled)
+    }
+
+    private struct RecheckDescriptor {
+        var label: String
+        var showSpinner: Bool
+        var disabled: Bool
+        var tint: Color?
+    }
+
+    private func recheckPhaseDescriptor<P: Equatable>(_ phase: P) -> RecheckDescriptor {
+        if let p = phase as? CloudSyncMonitor.RecheckPhase {
+            return descriptor(for: p)
+        }
+        if let p = phase as? IntelligenceService.RecheckPhase {
+            return descriptor(for: p)
+        }
+        return RecheckDescriptor(label: "", showSpinner: false, disabled: false, tint: nil)
+    }
+
+    private func descriptor(for phase: CloudSyncMonitor.RecheckPhase) -> RecheckDescriptor {
+        switch phase {
+        case .idle:
+            return RecheckDescriptor(label: "", showSpinner: false, disabled: false, tint: nil)
+        case .checking:
+            return RecheckDescriptor(label: "Re-checking…", showSpinner: true, disabled: true, tint: Color.inkSoft)
+        case .settled(let unchanged):
+            return RecheckDescriptor(
+                label: unchanged ? "Result unchanged" : "Updated",
+                showSpinner: false,
+                disabled: true,
+                tint: unchanged ? Color.inkSoft : Color.editorialSage
+            )
+        }
+    }
+
+    private func descriptor(for phase: IntelligenceService.RecheckPhase) -> RecheckDescriptor {
+        switch phase {
+        case .idle:
+            return RecheckDescriptor(label: "", showSpinner: false, disabled: false, tint: nil)
+        case .checking:
+            return RecheckDescriptor(label: "Re-checking…", showSpinner: true, disabled: true, tint: Color.inkSoft)
+        case .settled(let unchanged):
+            return RecheckDescriptor(
+                label: unchanged ? "Result unchanged" : "Updated",
+                showSpinner: false,
+                disabled: true,
+                tint: unchanged ? Color.inkSoft : Color.editorialSage
+            )
+        }
+    }
+
+    private func copyDiagnostics() {
+        guard let text = cloudSync.lastErrorDiagnostics else { return }
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #else
+        UIPasteboard.general.string = text
+        #endif
+        diagnosticsCopied = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            diagnosticsCopied = false
         }
     }
 
