@@ -137,6 +137,18 @@ struct ContentView: View {
                 intelligenceAvailable: intelligence.isAvailable
             )
         }
+        // Hidden ⌘R shortcut — kicks CloudSyncMonitor's account-status round
+        // trip, which is the closest thing to a "force sync" we have.
+        // NSPersistentCloudKitContainer doesn't expose a public sync trigger,
+        // but the network call wakes the daemon's scheduler and the
+        // Settings → iCloud Sync section reflects the result via recheckPhase.
+        .background {
+            Button("Sync now", action: triggerManualSync)
+                .keyboardShortcut("r", modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         #endif
         .sheet(isPresented: $showingQuickCapture) {
             QuickCaptureView()
@@ -185,6 +197,10 @@ struct ContentView: View {
             }
         }
         .environment(unlockSession)
+    }
+
+    private func triggerManualSync() {
+        Task { await CloudSyncMonitor.shared.refreshAccountStatus() }
     }
 
     private func openSettingsTapped() {
