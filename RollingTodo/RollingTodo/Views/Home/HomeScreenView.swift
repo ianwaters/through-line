@@ -12,7 +12,10 @@ struct HomeScreenView: View {
 
     @Environment(\.modelContext) private var context
     @Query(filter: #Predicate<Note> { $0.archivedDate == nil }) private var activeNotes: [Note]
-    @Query private var homepageNotes: [HomepageNote]
+    /// Sorted descending by modifiedDate so `homepageNotes.first` is always the
+    /// freshest record on every device — see `ensureHomepageNote()` for why
+    /// this matters (the singleton has a cross-device creation race).
+    @Query(sort: \HomepageNote.modifiedDate, order: .reverse) private var homepageNotes: [HomepageNote]
 
     @AppStorage("showHomepageNote") private var showHomepageNote: Bool = true
     @AppStorage("dueTodayIsUrgent") private var dueTodayIsUrgent: Bool = false
@@ -263,6 +266,12 @@ struct HomeScreenView: View {
             Text("This will permanently delete every note with status Cancelled. This can't be undone.")
         }
         .onAppear(perform: ensureHomepageNote)
+        .onChange(of: homepageNotes.count) { _, _ in
+            // When CloudKit pulls a foreign HomepageNote (e.g. another device's
+            // singleton from before this fix shipped), dedupe immediately so
+            // the editor below doesn't briefly bind to the wrong record.
+            ensureHomepageNote()
+        }
     }
 
     // MARK: - Hero
@@ -507,11 +516,38 @@ struct HomeScreenView: View {
         }
     }
 
+    /// HomepageNote is meant to be a singleton — one record shared across the
+    /// user's devices via CloudKit. The naive `if isEmpty { create }` runs on
+    /// every device's first launch *before* CloudKit has pulled, so each device
+    /// ends up creating its own distinct `CKRecord`. The records sync as
+    /// separate rows and the unsorted query landed on a different one on each
+    /// device, so edits never appeared to converge.
+    ///
+    /// Strategy: when multiple records exist, pick a canonical one
+    /// deterministically (prefer non-empty body, then most recently modified)
+    /// and delete the rest. Both devices reach the same conclusion from the
+    /// same synced data, so the deletes are idempotent and converge.
     private func ensureHomepageNote() {
         if homepageNotes.isEmpty {
             context.insert(HomepageNote())
             try? context.save()
+            return
         }
+        guard homepageNotes.count > 1 else { return }
+        let withContent = homepageNotes.filter {
+            !$0.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let pool = withContent.isEmpty ? homepageNotes : withContent
+        // Tie-break with the lowest UUID string so two devices that see the
+        // same modifiedDate values agree on the same winner.
+        guard let canonical = pool.max(by: { a, b in
+            if a.modifiedDate != b.modifiedDate { return a.modifiedDate < b.modifiedDate }
+            return a.id.uuidString > b.id.uuidString
+        }) else { return }
+        for stale in homepageNotes where stale.id != canonical.id {
+            context.delete(stale)
+        }
+        try? context.save()
     }
 
     private func performSetOverdueToTriage() {

@@ -316,7 +316,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = com.ianwaters.RollingTodo4.ShareExtension/com.ianwaters.RollingTodo4.ShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = ZP8HDDQ93L;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = com.ianwaters.RollingTodo4.ShareExtension/Info.plist;
@@ -347,7 +347,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = com.ianwaters.RollingTodo4.ShareExtension/com.ianwaters.RollingTodo4.ShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = ZP8HDDQ93L;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = com.ianwaters.RollingTodo4.ShareExtension/Info.plist;
@@ -546,7 +546,7 @@
 				CODE_SIGN_ENTITLEMENTS = RollingTodo/RollingTodo.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = ZP8HDDQ93L;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -616,7 +616,7 @@
 				CODE_SIGN_ENTITLEMENTS = RollingTodo/RollingTodo.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = ZP8HDDQ93L;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
