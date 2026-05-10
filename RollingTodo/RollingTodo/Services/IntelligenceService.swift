@@ -94,15 +94,24 @@ final class IntelligenceService {
         }
 
         let prompt = """
-            Synthesise a single sentence summarising the user's \(input.timeOfDayNoun). \
-            Maximum 24 words. Editorial in tone, no emoji, no exclamation marks. \
-            If everything is quiet, say so. Events are distinct. Use the present tense.
+            You are a personal assistant assiting a professional.
+            Create a single sentence summarising the user's \(input.timeOfDayNoun). \
+            Maximum 24 words. Friendly in tone, no emoji, no exclamation marks. \
+            If everything is quiet, say so. Events are distinct. 
+            Address the user in the second person.
+            Use the present tense. Use modal verbs. DO NOT USE THE PAST TENSE.
+            Use simple English.
+            When there's nothing pressing, suggest what the user could do with the
+            quiet (e.g. "You can enjoy a relaxed morning", "You have time for deep
+            work"). Don't assert what the user is feeling or doing.
 
             Facts to weave in (omit any that are zero/empty):
             - Urgent todos: \(input.urgentCount)
             - Due today: \(input.dueTodayCount)
             - Overdue: \(input.overdueCount)
             - \(eventsLine)
+            
+            Respond with JUST the summary.
             """
 
         let session = LanguageModelSession()
