@@ -105,19 +105,13 @@ struct QuickCaptureView: View {
             folder = nil
         }
 
-        let nextSort: Int = {
-            let descriptor = FetchDescriptor<Note>()
-            let all = (try? context.fetch(descriptor)) ?? []
-            return (all.map(\.sortOrder).max() ?? -1) + 1
-        }()
-
-        let n = Note(title: trimmedTitle, folder: folder, sortOrder: nextSort)
-        n.bodyMarkdown = noteBody
-        n.todoEnabled = asTodo
-        if asTodo { n.status = .notStarted }
-        n.refreshTags()
-        context.insert(n)
-        try? context.save()
+        NoteCreator.create(
+            in: context,
+            title: trimmedTitle,
+            body: noteBody,
+            folder: folder,
+            asTodo: asTodo
+        )
 
         title = ""
         noteBody = ""

@@ -181,17 +181,8 @@ struct AINoteComposerView: View {
     }
 
     private func saveAsNote() {
-        let descriptor = FetchDescriptor<Note>(predicate: #Predicate { $0.archivedDate == nil })
-        let existing = (try? context.fetch(descriptor)) ?? []
-        let next = (existing.map(\.sortOrder).max() ?? -1) + 1
-
-        let title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = draftBody.trimmingCharacters(in: .whitespacesAndNewlines)
-        let note = Note(title: title.isEmpty ? "New Note" : title, folder: nil, sortOrder: next)
-        note.bodyMarkdown = body
-        note.refreshTags()
-        context.insert(note)
-        try? context.save()
+        let note = NoteCreator.create(in: context, title: draftTitle, body: body)
         onSaved?(note.id)
         dismiss()
     }

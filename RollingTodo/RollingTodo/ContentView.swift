@@ -190,10 +190,6 @@ struct ContentView: View {
     }
 
     private func createNewNote() {
-        let activePredicate = #Predicate<Note> { $0.archivedDate == nil }
-        let existing = (try? context.fetch(FetchDescriptor<Note>(predicate: activePredicate))) ?? []
-        let next = (existing.map(\.sortOrder).max() ?? -1) + 1
-
         var folder: Folder? = nil
         var initialBody = ""
         if case .folder(let folderID) = sidebarSelection {
@@ -202,11 +198,12 @@ struct ContentView: View {
             initialBody = "#\(tag) "
         }
 
-        let note = Note(title: "New Note", folder: folder, sortOrder: next)
-        note.bodyMarkdown = initialBody
-        note.refreshTags()
-        context.insert(note)
-        try? context.save()
+        let note = NoteCreator.create(
+            in: context,
+            title: "New Note",
+            body: initialBody,
+            folder: folder
+        )
         noteSelection = note.id
     }
 }
