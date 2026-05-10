@@ -169,11 +169,13 @@ struct ContentView: View {
             CloudSettingsSync.shared.start()
             CalendarEventsService.shared.start()
             MaintenanceService.shared.runIfDue(context: context)
+            ShareOutbox.drain(into: context)
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 MaintenanceService.shared.runIfDue(context: context)
                 CalendarEventsService.shared.refreshIfDue()
+                ShareOutbox.drain(into: context)
             } else {
                 unlockSession.lockAll()
             }
