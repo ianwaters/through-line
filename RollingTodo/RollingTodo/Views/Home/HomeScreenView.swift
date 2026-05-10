@@ -221,12 +221,12 @@ struct HomeScreenView: View {
                         .padding(.bottom, isCompact ? 32 : 56)
                 }
 
-                quickActions
-                    .padding(.bottom, showHomepageNote && !homepageNotes.isEmpty ? (isCompact ? 32 : 56) : 24)
-
                 if showHomepageNote {
                     homepageSection
+                        .padding(.bottom, isCompact ? 32 : 56)
                 }
+
+                quickActions
             }
             .padding(.horizontal, isCompact ? 24 : 64)
             .padding(.vertical, isCompact ? 32 : 72)
