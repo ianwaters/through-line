@@ -63,34 +63,28 @@ struct QuickCaptureView: View {
                 }
             }
 
-            HStack {
-                Toggle(isOn: $asTodo) {
-                    Label("Todo", systemImage: "checkmark.circle")
-                        .labelStyle(.titleAndIcon)
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
+            Toggle(isOn: $asTodo) {
+                Label("Capture as a todo", systemImage: "checkmark.circle")
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.inkSoft)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
 
+            HStack(spacing: 10) {
                 Spacer()
 
                 Button("Cancel") { dismiss() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.inkSoft)
+                    .buttonStyle(.bordered)
                     .keyboardShortcut(.cancelAction)
 
-                Button {
-                    save()
-                } label: {
-                    Text("Capture")
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canSave)
+                Button("Capture") { save() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canSave)
             }
+            .font(.system(size: 14, weight: .semibold))
         }
         .padding(20)
         #if os(macOS)
