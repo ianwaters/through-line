@@ -26,6 +26,20 @@ struct SidebarView: View {
                 Label("All", systemImage: "tray.full")
                     .tag(SidebarSelection.allNotes)
 
+                if snoozedCount > 0 {
+                    Label {
+                        HStack {
+                            Text("Snoozed")
+                            Spacer()
+                            Text("\(snoozedCount)")
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "moon.zzz")
+                    }
+                    .tag(SidebarSelection.snoozed)
+                }
+
                 ForEach(folders) { folder in
                     folderRow(folder)
                         .tag(SidebarSelection.folder(folder.id))
@@ -131,6 +145,13 @@ struct SidebarView: View {
             for t in n.tags ?? [] { set.insert(t) }
         }
         return set.sorted()
+    }
+
+    private var snoozedCount: Int {
+        let now = Date.now
+        return activeNotes.reduce(0) { acc, n in
+            acc + (n.isSnoozed(at: now) ? 1 : 0)
+        }
     }
 
     private var deleteBinding: Binding<Bool> {

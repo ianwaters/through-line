@@ -46,6 +46,7 @@ enum SchemaSeeder {
         note.recurrenceMode = .duplicate
         note.isLocked = true
         note.tags = ["seed"]
+        note.snoozedUntil = Calendar.current.date(byAdding: .day, value: 1, to: .now)
         context.insert(note)
 
         let item = TodoItem(text: "Schema seed item", sortOrder: 0)

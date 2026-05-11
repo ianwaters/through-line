@@ -30,6 +30,28 @@ struct NoteRow: View {
 
     private var isUrgent: Bool { note.priority == .urgent }
 
+    private var isSnoozed: Bool { note.isSnoozed() }
+
+    private var snoozeWakeText: String? {
+        guard let until = note.snoozedUntil, until > .now else { return nil }
+        let cal = Calendar.current
+        let interval = until.timeIntervalSinceNow
+        if interval < 60 * 60 * 12 {
+            // Less than 12 hours away — friendlier as a relative duration.
+            let hours = Int((interval / 3600).rounded())
+            if hours <= 1 { return "Wakes in 1h" }
+            return "Wakes in \(hours)h"
+        }
+        if cal.isDateInTomorrow(until) {
+            return "Wakes tomorrow " + until.formatted(.dateTime.hour().minute())
+        }
+        let comps = cal.dateComponents([.day], from: .now, to: until)
+        if let d = comps.day, d < 7 {
+            return "Wakes " + until.formatted(.dateTime.weekday(.wide).hour().minute())
+        }
+        return "Wakes " + until.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+    }
+
     private var bodyPreview: String {
         let firstLine = note.bodyMarkdown
             .components(separatedBy: .newlines)
@@ -96,7 +118,11 @@ struct NoteRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    if note.isLocked {
+                    if isSnoozed {
+                        Image(systemName: "moon.zzz.fill")
+                            .foregroundStyle(pinLockColor)
+                            .font(.system(size: 10))
+                    } else if note.isLocked {
                         Image(systemName: "lock.fill")
                             .foregroundStyle(pinLockColor)
                             .font(.system(size: 10))
@@ -114,7 +140,7 @@ struct NoteRow: View {
 
                     Spacer(minLength: 4)
 
-                    if isUrgent && !note.isLocked {
+                    if isUrgent && !note.isLocked && !isSnoozed {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(dangerColor)
                             .font(.system(size: 10))
@@ -131,7 +157,12 @@ struct NoteRow: View {
 
     @ViewBuilder
     private var subline: some View {
-        if isOverdue {
+        if let wakeText = snoozeWakeText {
+            Text(wakeText)
+                .font(.system(size: 11, weight: .semibold).smallCaps())
+                .tracking(0.5)
+                .foregroundStyle(subtleColor)
+        } else if isOverdue {
             Text(daysOverdue == 1 ? "1 day overdue" : "\(daysOverdue) days overdue")
                 .font(.system(size: 11, weight: .semibold).smallCaps())
                 .tracking(0.5)

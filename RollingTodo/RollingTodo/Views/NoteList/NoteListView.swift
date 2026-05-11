@@ -41,6 +41,17 @@ struct NoteListView: View {
                 onSettings: onSettings
             )
             .id("\(tab.rawValue)-all")
+        case .snoozed:
+            FilteredNoteListView(
+                tab: tab, scope: .snoozed,
+                noteSelection: $noteSelection, searchText: $searchText,
+                focusModeEnabled: $focusModeEnabled,
+                intelligenceAvailable: intelligenceAvailable,
+                onQuickCapture: onQuickCapture,
+                onAINote: onAINote,
+                onSettings: onSettings
+            )
+            .id("\(tab.rawValue)-snoozed")
         case .folder(let id):
             FilteredNoteListView(
                 tab: tab, scope: .folder(id),
@@ -97,6 +108,7 @@ struct FilteredNoteListView: View {
         case .all: "all"
         case .folder(let id): "folder-\(id.uuidString)"
         case .tag(let t): "tag-\(t)"
+        case .snoozed: "snoozed"
         }
         return "noteSort.\(tab.rawValue).\(scopeKey)"
     }
@@ -132,7 +144,7 @@ struct FilteredNoteListView: View {
             } else {
                 predicate = #Predicate<Note> { $0.archivedDate == nil && $0.folder?.id == folderID }
             }
-        case .all, .tag:
+        case .all, .tag, .snoozed:
             if archived {
                 predicate = #Predicate<Note> { $0.archivedDate != nil }
             } else {
@@ -155,6 +167,17 @@ struct FilteredNoteListView: View {
         return nil
     }
 
+    private var isSnoozedScope: Bool {
+        if case .snoozed = scope { return true }
+        return false
+    }
+
+    private var searchPrompt: String {
+        if tab == .archive { return "Search archive" }
+        if isSnoozedScope { return "Search snoozed" }
+        return "Search notes"
+    }
+
     private var navTitle: String {
         switch scope {
         case .folder:
@@ -163,15 +186,24 @@ struct FilteredNoteListView: View {
             return "#\(t)"
         case .all:
             return tab == .archive ? "All Archived" : "All Notes"
+        case .snoozed:
+            return "Snoozed"
         }
     }
 
+    /// Notes after scope filtering. Snoozed notes are excluded from every scope
+    /// EXCEPT `.snoozed`, where they're the only thing shown.
     private var scopedNotes: [Note] {
+        let now = Date.now
         switch scope {
         case .tag(let t):
-            return notes.filter { $0.tags?.contains(t) == true }
+            return notes.filter { $0.tags?.contains(t) == true && !$0.isSnoozed(at: now) }
         case .all, .folder:
+            return notes.filter { !$0.isSnoozed(at: now) }
+        case .snoozed:
             return notes
+                .filter { $0.isSnoozed(at: now) }
+                .sorted { ($0.snoozedUntil ?? .distantFuture) < ($1.snoozedUntil ?? .distantFuture) }
         }
     }
 
@@ -187,6 +219,8 @@ struct FilteredNoteListView: View {
     }
 
     private var sortedNotes: [Note] {
+        // Snoozed scope keeps its scope-defined order (next-to-wake first).
+        if case .snoozed = scope { return filteredNotes }
         let base = filteredNotes
         let pinned = base.filter(\.isPinned).sorted {
             ($0.pinnedDate ?? .distantPast) > ($1.pinnedDate ?? .distantPast)
@@ -196,7 +230,8 @@ struct FilteredNoteListView: View {
     }
 
     private var focusActive: Bool {
-        focusModeEnabled && tab != .archive
+        if case .snoozed = scope { return false }
+        return focusModeEnabled && tab != .archive
     }
 
     private var displayedNotes: [Note] {
@@ -205,6 +240,7 @@ struct FilteredNoteListView: View {
     }
 
     private func passesFocus(_ note: Note) -> Bool {
+        if note.isSnoozed() { return false }
         if note.isPinned { return true }
         guard note.todoEnabled else { return false }
         guard note.status != .done, note.status != .cancelled else { return false }
@@ -250,8 +286,10 @@ struct FilteredNoteListView: View {
         .navigationTitle(navTitle)
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
-                NoteSearchField(text: $searchText, prompt: tab == .archive ? "Search archive" : "Search notes")
-                sortMenuRow
+                NoteSearchField(text: $searchText, prompt: searchPrompt)
+                if !isSnoozedScope {
+                    sortMenuRow
+                }
                 if focusActive {
                     focusBanner
                 }
@@ -263,7 +301,7 @@ struct FilteredNoteListView: View {
                     Label("New Note", systemImage: "square.and.pencil")
                 }
                 .keyboardShortcut("n", modifiers: .command)
-                .disabled(tab == .archive)
+                .disabled(tab == .archive || isSnoozedScope)
             }
             #if os(iOS)
             AppPrimaryToolbar(
@@ -300,6 +338,17 @@ struct FilteredNoteListView: View {
                    systemImage: note.isPinned ? "pin.slash" : "pin.fill") {
                 togglePin(note)
             }
+            if note.isSnoozed() {
+                Button("Wake now", systemImage: "moon.zzz") { wakeNow(note) }
+            } else {
+                Menu {
+                    ForEach(SnoozePresets.options(for: .now)) { opt in
+                        Button(opt.title) { snooze(note, until: opt.date) }
+                    }
+                } label: {
+                    Label("Snooze", systemImage: "moon.zzz")
+                }
+            }
             Button("Rename") { startRename(note) }
             Button("Duplicate") { duplicate(note) }
             Button(note.isArchived ? "Unarchive" : "Archive", systemImage: note.isArchived ? "tray.and.arrow.up" : "archivebox") {
@@ -317,6 +366,17 @@ struct FilteredNoteListView: View {
                       systemImage: note.isArchived ? "tray.and.arrow.up" : "archivebox")
             }
             .tint(.orange)
+            if note.isSnoozed() {
+                Button { wakeNow(note) } label: {
+                    Label("Wake", systemImage: "moon.zzz")
+                }
+                .tint(.purple)
+            } else {
+                Button { snooze(note, until: defaultSwipeSnooze()) } label: {
+                    Label("Snooze", systemImage: "moon.zzz")
+                }
+                .tint(.purple)
+            }
         }
         .swipeActions(edge: .leading) {
             Button { startRename(note) } label: {
@@ -324,6 +384,25 @@ struct FilteredNoteListView: View {
             }
             .tint(.blue)
         }
+    }
+
+    /// Default snooze for a one-tap iOS swipe — tomorrow morning at 8am.
+    /// The Mac context menu offers the full preset list; the swipe is the
+    /// "I just want this gone for now" gesture.
+    private func defaultSwipeSnooze() -> Date {
+        SnoozePresets.options(for: .now)
+            .first { $0.id == "tomorrow-morning" }?
+            .date ?? Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now
+    }
+
+    private func snooze(_ note: Note, until date: Date) {
+        note.snoozedUntil = date
+        try? context.save()
+    }
+
+    private func wakeNow(_ note: Note) {
+        note.snoozedUntil = nil
+        try? context.save()
     }
 
     @ViewBuilder
@@ -420,6 +499,8 @@ struct FilteredNoteListView: View {
             return (name, "An empty folder", "Add a note to fill it out.")
         case .tag(let t):
             return ("#\(t)", "Nothing tagged yet", "New notes here pre-fill #\(t).")
+        case .snoozed:
+            return ("Snoozed", "Nothing tucked away", "Snoozed notes will appear here.")
         }
     }
     #endif

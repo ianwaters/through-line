@@ -20,6 +20,7 @@ final class Note {
     var recurrenceModeRaw: String = "reset"
     var isLocked: Bool = false
     var tags: [String]? = []
+    var snoozedUntil: Date?
 
     var folder: Folder?
 
@@ -82,6 +83,13 @@ final class Note {
 
     var isArchived: Bool { archivedDate != nil }
     var isPinned: Bool { pinnedDate != nil }
+    /// True iff `snoozedUntil` is in the future relative to `now`.
+    /// Wake is implicit — the field stays set after wake to enable the
+    /// "back to your attention" detection on the home dashboard.
+    func isSnoozed(at now: Date = .now) -> Bool {
+        guard let until = snoozedUntil else { return false }
+        return until > now
+    }
 
     func refreshTags() {
         let combined = title + " " + bodyMarkdown

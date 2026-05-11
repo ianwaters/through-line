@@ -79,6 +79,8 @@ struct TodoInspector: View {
                     Label(note.isLocked ? "Remove lock" : "Lock note",
                           systemImage: note.isLocked ? "lock.open" : "lock")
                 }
+
+                snoozeRow
             }
 
             if note.todoEnabled {
@@ -166,6 +168,42 @@ struct TodoInspector: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private var snoozeRow: some View {
+        if let until = note.snoozedUntil, until > .now {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Snoozed until \(formatSnooze(until))")
+                    .font(.callout)
+                Button("Wake now") {
+                    note.snoozedUntil = nil
+                    try? context.save()
+                }
+            }
+        } else {
+            SnoozeMenu {
+                Label("Snooze…", systemImage: "moon.zzz")
+            } onPick: { date in
+                note.snoozedUntil = date
+                try? context.save()
+            }
+        }
+    }
+
+    private func formatSnooze(_ date: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(date) {
+            return date.formatted(.dateTime.hour().minute())
+        }
+        if cal.isDateInTomorrow(date) {
+            return "tomorrow " + date.formatted(.dateTime.hour().minute())
+        }
+        let withinWeek = (cal.dateComponents([.day], from: .now, to: date).day ?? 99) < 7
+        if withinWeek {
+            return date.formatted(.dateTime.weekday(.wide).hour().minute())
+        }
+        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
     }
 
     private func toggleLock() async {

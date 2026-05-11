@@ -35,6 +35,7 @@ final class MaintenanceService {
     func rescheduleOverdue(context: ModelContext) {
         let cal = Calendar.current
         let startOfToday = cal.startOfDay(for: .now)
+        let now = Date.now
         let descriptor = FetchDescriptor<Note>(predicate: #Predicate {
             $0.archivedDate == nil && $0.todoEnabled && $0.dueDate != nil
         })
@@ -47,12 +48,16 @@ final class MaintenanceService {
             guard let due = n.dueDate else { continue }
             guard cal.startOfDay(for: due) < startOfToday else { continue }
             guard n.statusRaw != cancelledRaw, n.statusRaw != doneRaw else { continue }
+            // Skip snoozed notes — they're deferred, don't pull their dueDate
+            // forward while they're hidden from view.
+            if let until = n.snoozedUntil, until > now { continue }
             n.dueDate = startOfToday
         }
     }
 
     /// Auto-archives inactive *todo* notes only. Pure reference/markdown notes are never
     /// auto-archived — only notes the user has flagged as todos can age out.
+    /// Snoozed notes are skipped — they're deferred, not stale.
     func archiveInactive(context: ModelContext, age: ArchiveAge) {
         guard let cutoff = Calendar.current.date(byAdding: .day, value: -age.days, to: .now) else { return }
         let descriptor = FetchDescriptor<Note>(predicate: #Predicate {
@@ -61,6 +66,7 @@ final class MaintenanceService {
         guard let notes = try? context.fetch(descriptor) else { return }
         let now = Date.now
         for n in notes {
+            if let until = n.snoozedUntil, until > now { continue }
             n.archivedDate = now
         }
     }

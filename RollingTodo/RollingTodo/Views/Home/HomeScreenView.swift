@@ -51,7 +51,12 @@ struct HomeScreenView: View {
     private var calendar: Calendar { .current }
     private var startOfToday: Date { calendar.startOfDay(for: .now) }
 
-    private var todoEnabledActive: [Note] { activeNotes.filter(\.todoEnabled) }
+    /// Active todo notes, excluding ones currently snoozed. Snoozed notes are
+    /// hidden from every dashboard count — they shouldn't nag while deferred.
+    private var todoEnabledActive: [Note] {
+        let now = Date.now
+        return activeNotes.filter { $0.todoEnabled && !$0.isSnoozed(at: now) }
+    }
 
     private var overdue: [Note] {
         todoEnabledActive.filter { n in
@@ -80,6 +85,22 @@ struct HomeScreenView: View {
 
     private var done: [Note] { todoEnabledActive.filter { $0.status == .done } }
     private var cancelled: [Note] { todoEnabledActive.filter { $0.status == .cancelled } }
+
+    /// Notes that woke from snooze in the last 24h. The `snoozedUntil` field
+    /// stays set after wake (no maintenance clears it), so this is a pure
+    /// derived view — sorted most-recent-wake first.
+    private var recentlyWoken: [Note] {
+        let now = Date.now
+        let cutoff = now.addingTimeInterval(-60 * 60 * 24)
+        return activeNotes
+            .filter { n in
+                guard let until = n.snoozedUntil else { return false }
+                return until <= now && until > cutoff
+            }
+            .sorted {
+                ($0.snoozedUntil ?? .distantPast) > ($1.snoozedUntil ?? .distantPast)
+            }
+    }
 
     private enum TimeOfDay {
         case morning, afternoon, evening, night
@@ -310,6 +331,24 @@ struct HomeScreenView: View {
                     .padding(.vertical, 4)
                 }
                 .padding(.top, 16)
+            }
+
+            if !recentlyWoken.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Back to your attention")
+                        .eyebrowStyle(tint: Color.inkMuted)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(recentlyWoken) { note in
+                                UpdateChip(note: note, leadingSymbol: "moon.zzz.fill") {
+                                    onOpenNote?(note.id)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .padding(.top, 18)
             }
         }
     }
@@ -580,6 +619,7 @@ struct HomeScreenView: View {
 
 private struct UpdateChip: View {
     let note: Note
+    var leadingSymbol: String? = nil
     let action: () -> Void
 
     @State private var isHovered: Bool = false
@@ -594,7 +634,11 @@ private struct UpdateChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                if let dot = leadingDot {
+                if let symbol = leadingSymbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                } else if let dot = leadingDot {
                     Circle()
                         .fill(dot)
                         .frame(width: 6, height: 6)
