@@ -4,6 +4,9 @@ import SwiftData
 struct TodoInspector: View {
     @Bindable var note: Note
     @Binding var mode: EditorMode
+    var suggestedDueDate: Date? = nil
+    var onApplySuggestion: ((Date) -> Void)? = nil
+    var onDismissSuggestion: (() -> Void)? = nil
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(UnlockSession.self) private var unlockSession
@@ -135,6 +138,12 @@ struct TodoInspector: View {
                     LabelColorPicker(selection: labelColorBinding)
                 }
 
+                if let suggestion = suggestedDueDate, note.dueDate == nil {
+                    Section("Suggested") {
+                        suggestedDueDateRow(date: suggestion)
+                    }
+                }
+
                 Section("Due Date") {
                     DueDatePresets(setDate: { setDue($0) })
 
@@ -168,6 +177,47 @@ struct TodoInspector: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private func suggestedDueDateRow(date: Date) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(formatSuggestion(date))
+                    .font(.callout)
+                Text("Detected in this note")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Set") { onApplySuggestion?(date) }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            Button {
+                onDismissSuggestion?()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss suggestion")
+        }
+    }
+
+    private func formatSuggestion(_ date: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(date) {
+            return "Today, " + date.formatted(.dateTime.hour().minute())
+        }
+        if cal.isDateInTomorrow(date) {
+            return "Tomorrow, " + date.formatted(.dateTime.hour().minute())
+        }
+        // Within the next week — use weekday.
+        let days = cal.dateComponents([.day], from: .now, to: date).day ?? 99
+        if days < 7 {
+            return date.formatted(.dateTime.weekday(.wide).hour().minute())
+        }
+        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
     }
 
     @ViewBuilder

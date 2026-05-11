@@ -127,6 +127,12 @@ private struct NoteEditorContent: View {
     @State private var ticker: Date = .now
     @State private var intelligence = IntelligenceService.shared
     @State private var suggestingTitle: Bool = false
+    @State private var detectTask: Task<Void, Never>?
+    @State private var suggestedDueDate: Date?
+    /// Set transiently when the user dismisses a suggestion. The same suggested
+    /// date is suppressed for the rest of this editing session; a *different*
+    /// detected date (re-typed later) re-surfaces the row.
+    @State private var dismissedSuggestion: Date?
 
     private var titleLooksUnset: Bool {
         let trimmed = note.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -272,15 +278,68 @@ private struct NoteEditorContent: View {
             }
         }
         .inspector(isPresented: $showInspector) {
-            TodoInspector(note: note, mode: $mode)
-                .inspectorColumnWidth(min: 240, ideal: 280, max: 360)
+            TodoInspector(
+                note: note,
+                mode: $mode,
+                suggestedDueDate: visibleSuggestion,
+                onApplySuggestion: applySuggestedDueDate,
+                onDismissSuggestion: dismissSuggestedDueDate
+            )
+            .inspectorColumnWidth(min: 240, ideal: 280, max: 360)
         }
-        .onChange(of: note.title) { _, _ in scheduleSave() }
-        .onChange(of: note.bodyMarkdown) { _, _ in scheduleSave() }
+        .onChange(of: note.title) { _, _ in
+            scheduleSave()
+            scheduleDateDetect()
+        }
+        .onChange(of: note.bodyMarkdown) { _, _ in
+            scheduleSave()
+            scheduleDateDetect()
+        }
+        .onChange(of: note.dueDate) { _, newValue in
+            // If the user sets a due date manually (or via the suggestion),
+            // the suggestion row should disappear immediately.
+            if newValue != nil { suggestedDueDate = nil }
+        }
+        .onAppear {
+            runDateDetect()
+        }
         .onDisappear {
             saveTask?.cancel()
+            detectTask?.cancel()
             flushSave()
         }
+    }
+
+    private var visibleSuggestion: Date? {
+        guard note.dueDate == nil else { return nil }
+        guard let s = suggestedDueDate else { return nil }
+        if s == dismissedSuggestion { return nil }
+        return s
+    }
+
+    private func applySuggestedDueDate(_ date: Date) {
+        note.dueDate = date
+        note.modifiedDate = .now
+        try? context.save()
+        suggestedDueDate = nil
+    }
+
+    private func dismissSuggestedDueDate() {
+        dismissedSuggestion = suggestedDueDate
+    }
+
+    private func scheduleDateDetect() {
+        detectTask?.cancel()
+        detectTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(800))
+            if Task.isCancelled { return }
+            runDateDetect()
+        }
+    }
+
+    private func runDateDetect() {
+        let combined = note.title + " " + note.bodyMarkdown
+        suggestedDueDate = DateDetectionService.detect(in: combined)
     }
 
     private func scheduleSave() {
