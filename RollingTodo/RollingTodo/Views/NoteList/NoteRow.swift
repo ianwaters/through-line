@@ -153,6 +153,13 @@ struct NoteRow: View {
             }
         }
         .padding(.vertical, 4)
+        // Make the entire row hit-testable for List selection. Without this,
+        // on macOS the Text view absorbs clicks for cursor placement and the
+        // HStack's default hit area is just the union of its children — so
+        // clicks land in dead space between text and icons. Result: tapping
+        // the title/icon doesn't select the row, only the empty trailing area.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder

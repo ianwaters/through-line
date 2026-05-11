@@ -117,25 +117,32 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func folderRow(_ folder: Folder) -> some View {
-        Group {
-            if renamingID == folder.id {
-                Label {
-                    TextField("Folder name", text: $renameText)
-                        .textFieldStyle(.plain)
-                        .focused($renameFocus, equals: folder.id)
-                        .onSubmit { commitRename() }
-                        #if os(macOS)
-                        .onExitCommand { cancelRename() }
-                        #endif
-                } icon: {
-                    Image(systemName: "folder")
-                }
-            } else {
-                Label(folder.name.isEmpty ? "Untitled" : folder.name, systemImage: "folder")
+        if renamingID == folder.id {
+            Label {
+                TextField("Folder name", text: $renameText)
+                    .textFieldStyle(.plain)
+                    .focused($renameFocus, equals: folder.id)
+                    .onSubmit { commitRename() }
+                    #if os(macOS)
+                    .onExitCommand { cancelRename() }
+                    #endif
+            } icon: {
+                Image(systemName: "folder")
             }
-        }
-        .onTapGesture(count: 2) {
-            startRename(folder)
+        } else {
+            // `.contentShape(.rect)` makes the entire row width hit-testable
+            // for List selection (the Label's default hit area is just the
+            // text + icon glyphs, leaving the rest of the row dead).
+            // `.simultaneousGesture` for the double-tap rename so single-taps
+            // still propagate to List selection — `.onTapGesture(count: 2)`
+            // would put us in a "wait for second tap" state and swallow the
+            // single-tap.
+            Label(folder.name.isEmpty ? "Untitled" : folder.name, systemImage: "folder")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                    startRename(folder)
+                })
         }
     }
 
