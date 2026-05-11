@@ -184,7 +184,7 @@ private struct PresentedEventID: Identifiable {
 }
 #endif
 
-private struct EventRow: View {
+struct EventRow: View {
     let event: CalendarEventViewModel
     let onTap: () -> Void
 

@@ -192,6 +192,100 @@ final class IntelligenceService {
 
     private static let summaryTimeoutLogger = Logger(subsystem: "com.ianwaters.RollingTodo4", category: "intelligence")
 
+    // MARK: - Tomorrow summary (evening preview)
+
+    struct TomorrowSummaryInput {
+        let weekdayNoun: String           // "Wednesday"
+        let eventCount: Int
+        let firstEventTime: String?       // "8am"
+        let firstEventTitle: String?
+        let dueCount: Int
+        let urgentDueCount: Int
+    }
+
+    private var cachedTomorrowSummary: (hash: Int, text: String)?
+    private var tomorrowSummaryTask: (hash: Int, task: Task<String?, Never>)?
+
+    func cachedTomorrowSummary(matching hash: Int) -> String? {
+        guard let cached = cachedTomorrowSummary, cached.hash == hash else { return nil }
+        return cached.text
+    }
+
+    func tomorrowSummary(_ input: TomorrowSummaryInput, hash: Int) async -> String? {
+        if let cached = cachedTomorrowSummary, cached.hash == hash {
+            return cached.text
+        }
+        if let existing = tomorrowSummaryTask, existing.hash == hash {
+            return await existing.task.value
+        }
+        tomorrowSummaryTask?.task.cancel()
+
+        let task = Task<String?, Never> { [weak self] in
+            await self?.generateTomorrowSummary(input)
+        }
+        tomorrowSummaryTask = (hash, task)
+
+        let result = await Self.firstResult(timeoutSeconds: 8) {
+            await task.value
+        }
+        if result == nil {
+            task.cancel()
+            Self.summaryTimeoutLogger.error("tomorrowSummary timed out after 8s; falling back")
+        }
+        if tomorrowSummaryTask?.hash == hash {
+            tomorrowSummaryTask = nil
+            if let result {
+                cachedTomorrowSummary = (hash, result)
+            }
+        }
+        return result
+    }
+
+    private func generateTomorrowSummary(_ input: TomorrowSummaryInput) async -> String? {
+        guard isAvailable else { return nil }
+
+        var facts: [String] = []
+        if input.eventCount > 0 {
+            if let time = input.firstEventTime, let title = input.firstEventTitle {
+                facts.append("\(input.eventCount) calendar event\(input.eventCount == 1 ? "" : "s"), starting at \(time) with \(title)")
+            } else {
+                facts.append("\(input.eventCount) calendar event\(input.eventCount == 1 ? "" : "s")")
+            }
+        }
+        if input.dueCount > 0 {
+            facts.append("\(input.dueCount) thing\(input.dueCount == 1 ? "" : "s") due")
+        }
+        if input.urgentDueCount > 0 {
+            facts.append("\(input.urgentDueCount) marked urgent")
+        }
+        let factsLine = facts.isEmpty ? "the day looks clear" : facts.joined(separator: "; ")
+
+        let prompt = """
+            You are previewing tomorrow for a professional.
+            Create a single sentence summarising tomorrow (\(input.weekdayNoun)).
+            Maximum 24 words. Friendly, no emoji, no exclamation marks.
+            Address the user in the second person.
+            Use future or modal verbs ("You'll have", "You can").
+            DO NOT reference today. DO NOT use the past tense.
+            If the day is busy, set expectations briefly. If quiet, say so.
+            Don't assert what the user is feeling or doing.
+
+            Facts:
+            - \(factsLine)
+
+            Respond with JUST the sentence.
+            """
+
+        let session = LanguageModelSession()
+        do {
+            let response = try await session.respond(to: prompt)
+            let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : text
+        } catch {
+            return nil
+        }
+    }
+
     /// Race a producer against a wall-clock timeout. Returns `nil` if the
     /// timeout wins. The producer's task is *not* cancelled here — callers
     /// should cancel separately if they want to stop further work.

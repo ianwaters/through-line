@@ -14,6 +14,7 @@ final class CalendarEventsService {
 
     private(set) var authStatus: EKAuthorizationStatus
     private(set) var events: [CalendarEventViewModel] = []
+    private(set) var tomorrowEvents: [CalendarEventViewModel] = []
     private(set) var selectedCalendarIDs: Set<String>
 
     private let selectedIDsKey = "calendarEventsSelectedIDs"
@@ -87,31 +88,49 @@ final class CalendarEventsService {
         lastRun = .now
         guard isAuthorizedToRead else {
             events = []
+            tomorrowEvents = []
             return
         }
         let cal = Calendar.current
-        let start = cal.startOfDay(for: .now)
-        guard let end = cal.date(byAdding: .day, value: 1, to: start) else {
+        let startOfToday = cal.startOfDay(for: .now)
+        guard let startOfTomorrow = cal.date(byAdding: .day, value: 1, to: startOfToday),
+              let startOfDayAfter = cal.date(byAdding: .day, value: 2, to: startOfToday) else {
             events = []
+            tomorrowEvents = []
             return
         }
         let selected = selectedCalendarIDs
         guard !selected.isEmpty else {
             events = []
+            tomorrowEvents = []
             return
         }
         let calendars = store.calendars(for: .event)
             .filter { selected.contains($0.calendarIdentifier) }
         guard !calendars.isEmpty else {
             events = []
+            tomorrowEvents = []
             return
         }
-        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: calendars)
+        // One EventKit fetch covers today + tomorrow; partition by start date.
+        let predicate = store.predicateForEvents(
+            withStart: startOfToday,
+            end: startOfDayAfter,
+            calendars: calendars
+        )
         let now = Date.now
-        events = store.events(matching: predicate)
-            .filter { $0.endDate >= now || $0.isAllDay }
+        let all = store.events(matching: predicate)
             .sorted { $0.startDate < $1.startDate }
             .compactMap { CalendarEventViewModel(from: $0) }
+
+        events = all.filter { event in
+            // Today: keep if it hasn't ended yet (or is all-day) AND its start
+            // is before tomorrow.
+            event.startDate < startOfTomorrow && (event.endDate >= now || event.isAllDay)
+        }
+        tomorrowEvents = all.filter { event in
+            event.startDate >= startOfTomorrow && event.startDate < startOfDayAfter
+        }
     }
 }
 

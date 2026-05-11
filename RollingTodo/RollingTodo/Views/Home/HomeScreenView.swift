@@ -153,6 +153,37 @@ struct HomeScreenView: View {
         return calendarService.events.filter { $0.endDate >= now || $0.isAllDay }
     }
 
+    private var tomorrowDueNotes: [Note] {
+        let cal = calendar
+        guard let startOfTomorrow = cal.date(byAdding: .day, value: 1, to: startOfToday),
+              let startOfDayAfter = cal.date(byAdding: .day, value: 2, to: startOfToday) else {
+            return []
+        }
+        let now = Date.now
+        return activeNotes
+            .filter { n in
+                guard n.todoEnabled,
+                      n.status != .done, n.status != .cancelled,
+                      !n.isSnoozed(at: now),
+                      let due = n.dueDate else { return false }
+                return due >= startOfTomorrow && due < startOfDayAfter
+            }
+            .sorted { a, b in
+                if a.priority.rawValue != b.priority.rawValue {
+                    return a.priority.rawValue > b.priority.rawValue
+                }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
+    }
+
+    private var isEveningOrLater: Bool {
+        calendar.component(.hour, from: .now) >= 18
+    }
+
+    private var showTomorrowSection: Bool {
+        isEveningOrLater && (!calendarService.tomorrowEvents.isEmpty || !tomorrowDueNotes.isEmpty)
+    }
+
     /// Hash of every input that should invalidate the cached summary. Includes
     /// the current hour so summaries refresh as time-of-day changes (morning →
     /// afternoon etc.) when body re-evaluates.
@@ -251,6 +282,15 @@ struct HomeScreenView: View {
                 if calendarEventsEnabled {
                     EventsTodaySection()
                         .padding(.bottom, isCompact ? 32 : 56)
+                }
+
+                if showTomorrowSection {
+                    TomorrowSection(
+                        events: calendarEventsEnabled ? calendarService.tomorrowEvents : [],
+                        dueNotes: tomorrowDueNotes,
+                        onOpenNote: onOpenNote
+                    )
+                    .padding(.bottom, isCompact ? 32 : 56)
                 }
 
                 if showHomepageNote {
