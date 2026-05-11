@@ -146,10 +146,11 @@ private struct NoteEditorContent: View {
                     .eyebrowStyle(tint: Color.inkMuted)
 
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    TextField("Untitled", text: $note.title)
+                    TextField("Untitled", text: $note.title, axis: .vertical)
                         .font(.editorialDisplay(34, weight: .semibold))
                         .foregroundStyle(Color.ink)
                         .textFieldStyle(.plain)
+                        .lineLimit(1...3)
 
                     if canSuggestTitle {
                         Button(action: suggestTitle) {
@@ -169,7 +170,7 @@ private struct NoteEditorContent: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 24)
             .padding(.top, 28)
             .padding(.bottom, 18)
 
@@ -216,7 +217,7 @@ private struct NoteEditorContent: View {
                         }
                         MarkdownView(text: note.bodyMarkdown)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 32)
+                            .padding(.horizontal, 24)
                             .padding(.vertical, 20)
                     }
                 }
