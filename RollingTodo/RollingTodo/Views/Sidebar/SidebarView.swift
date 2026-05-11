@@ -130,19 +130,12 @@ struct SidebarView: View {
                 Image(systemName: "folder")
             }
         } else {
-            // `.contentShape(.rect)` makes the entire row width hit-testable
-            // for List selection (the Label's default hit area is just the
-            // text + icon glyphs, leaving the rest of the row dead).
-            // `.simultaneousGesture` for the double-tap rename so single-taps
-            // still propagate to List selection — `.onTapGesture(count: 2)`
-            // would put us in a "wait for second tap" state and swallow the
-            // single-tap.
+            // No tap gesture here. Earlier `.onTapGesture(count: 2)` for
+            // double-click-to-rename swallowed single-clicks, and even
+            // `.simultaneousGesture(TapGesture(count: 2))` in a sidebar List
+            // blocks the List's own row-selection mechanism. Rename lives
+            // exclusively in the context menu now (matching note rows).
             Label(folder.name.isEmpty ? "Untitled" : folder.name, systemImage: "folder")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .simultaneousGesture(TapGesture(count: 2).onEnded {
-                    startRename(folder)
-                })
         }
     }
 
