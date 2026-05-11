@@ -225,19 +225,28 @@ final class IntelligenceService {
             eventsLine = "upcoming events: \(listed)"
         }
 
+        let quietExamples: String
+        switch input.timeOfDayNoun {
+        case "morning", "afternoon":
+            quietExamples = "\"You can enjoy a relaxed \(input.timeOfDayNoun)\", \"You have time for deep work\""
+        case "evening":
+            quietExamples = "\"You can enjoy a relaxed evening\", \"You have time to unwind\""
+        default: // "night"
+            quietExamples = "\"You can enjoy a quiet night\", \"You have time to rest\""
+        }
+
         let prompt = """
             You are a personal assistant assisting a professional.
             Create a single sentence summarising the user's \(input.timeOfDayNoun). \
             Maximum 24 words. Friendly in tone, no emoji, no exclamation marks. \
-            If everything is quiet, say so. Events are distinct. 
+            If everything is quiet, say so. Events are distinct.
             Address the user in the second person.
             Use the present tense. Use modal verbs. DO NOT USE THE PAST TENSE.
             Use simple English.
             When there's nothing pressing, suggest what the user could do with the
-            quiet (e.g. "You can enjoy a relaxed \(input.timeOfDayNoun)", "You have
-            time for deep work"). Match the time of day in your phrasing — do not
-            mention any other part of the day. Don't assert what the user is feeling
-            or doing.
+            quiet (e.g. \(quietExamples)). Match the time of day in your phrasing — do
+            not mention any other part of the day. Don't assert what the user is
+            feeling or doing.
 
             Facts to weave in (omit any that are zero/empty):
             - Urgent todos: \(input.urgentCount)
