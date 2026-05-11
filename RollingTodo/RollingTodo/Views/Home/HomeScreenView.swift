@@ -463,6 +463,7 @@ struct HomeScreenView: View {
     // MARK: - Sync issue banner
 
     private var showSyncIssueBanner: Bool {
+        if cloudSync.stuckSyncing { return true }
         switch cloudSync.status {
         case .failed, .noAccount: return true
         case .ready, .syncing, .unknown: return false
@@ -472,18 +473,21 @@ struct HomeScreenView: View {
     private var syncIssueBanner: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Sync Issue").eyebrowStyle(tint: Color.editorialAmber)
+                Text(cloudSync.stuckSyncing ? "Sync Stuck" : "Sync Issue")
+                    .eyebrowStyle(tint: Color.editorialAmber)
                 Spacer()
                 Circle()
                     .fill(Color.editorialAmber)
                     .frame(width: 8, height: 8)
             }
 
-            Text(cloudSync.statusTitle)
+            Text(cloudSync.stuckSyncing ? "Sync looks stuck" : cloudSync.statusTitle)
                 .font(.editorialDisplay(20, weight: .medium))
                 .foregroundStyle(Color.ink)
 
-            Text(cloudSync.statusNote)
+            Text(cloudSync.stuckSyncing
+                 ? "No data has moved in over a minute. Quitting and reopening the app usually clears this."
+                 : cloudSync.statusNote)
                 .font(.editorialItalic(14))
                 .foregroundStyle(Color.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -526,6 +530,17 @@ struct HomeScreenView: View {
 
     private var syncIssueActions: [SyncIssueAction] {
         var actions: [SyncIssueAction] = []
+        if cloudSync.stuckSyncing {
+            actions.append(SyncIssueAction(label: "Re-check") {
+                Task { await cloudSync.refreshAccountStatus() }
+            })
+            if cloudSync.lastErrorDiagnostics != nil {
+                actions.append(SyncIssueAction(label: diagnosticsCopied ? "Copied" : "Copy diagnostics") {
+                    copyDiagnostics()
+                })
+            }
+            return actions
+        }
         switch cloudSync.status {
         case .noAccount:
             actions.append(SyncIssueAction(label: "Open System Settings") { openICloudSettings() })

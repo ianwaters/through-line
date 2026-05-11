@@ -40,6 +40,16 @@ final class CloudSyncMonitor {
     private(set) var status: Status = .unknown
     private(set) var lastSuccessfulSyncAt: Date?
 
+    /// Set to true when `status` has been `.syncing` for longer than
+    /// `stuckSyncThreshold` with no terminal event. `NSPersistentCloudKitContainer`
+    /// is known to wedge on first launch after a schema change — the setup event
+    /// opens, no import/export ever follows, and the user is stuck staring at a
+    /// "Pulling the latest from iCloud" message. We can't unwedge cloudd from
+    /// code, but we can at least *say so* and tell the user to restart the app.
+    private(set) var stuckSyncing: Bool = false
+    private var stuckSyncTask: Task<Void, Never>?
+    private let stuckSyncThreshold: TimeInterval = 60
+
     /// Short, stable identifier for the iCloud account currently signed in —
     /// `…<last 6 chars>` of the user's CKRecord.ID. Same across all the user's
     /// devices, so they can confirm two test machines are syncing to the same
@@ -461,32 +471,32 @@ final class CloudSyncMonitor {
             switch accountStatus {
             case .available:
                 // Don't downgrade .ready/.syncing — we already have evidence sync is working.
-                if case .noAccount = status { status = .ready }
-                if status == .unknown { status = .ready }
+                if case .noAccount = status { setStatus(.ready) }
+                if status == .unknown { setStatus(.ready) }
                 await fetchSyncID(from: container)
             case .noAccount:
-                status = .noAccount(reason: "Sign in to iCloud in Settings to back up and sync your notes.")
+                setStatus(.noAccount(reason: "Sign in to iCloud in Settings to back up and sync your notes."))
                 syncID = nil
                 fullSyncID = nil
             case .restricted:
-                status = .noAccount(reason: "iCloud is restricted on this device. Notes won't sync until restrictions are lifted.")
+                setStatus(.noAccount(reason: "iCloud is restricted on this device. Notes won't sync until restrictions are lifted."))
                 syncID = nil
                 fullSyncID = nil
             case .temporarilyUnavailable:
-                status = .noAccount(reason: "iCloud is temporarily unavailable. We'll retry automatically.")
+                setStatus(.noAccount(reason: "iCloud is temporarily unavailable. We'll retry automatically."))
                 syncID = nil
                 fullSyncID = nil
             case .couldNotDetermine:
-                status = .noAccount(reason: "Couldn't reach iCloud. Check your network connection.")
+                setStatus(.noAccount(reason: "Couldn't reach iCloud. Check your network connection."))
                 syncID = nil
                 fullSyncID = nil
             @unknown default:
-                status = .noAccount(reason: "iCloud account state is unknown.")
+                setStatus(.noAccount(reason: "iCloud account state is unknown."))
                 syncID = nil
                 fullSyncID = nil
             }
         } catch {
-            status = .failed(message: humanReadable(error))
+            setStatus(.failed(message: humanReadable(error)))
             lastErrorDiagnostics = diagnosticsDump(error)
             syncID = nil
             fullSyncID = nil
@@ -514,7 +524,7 @@ final class CloudSyncMonitor {
                 as? NSPersistentCloudKitContainer.Event else { return }
         record(event: event)
         if event.endDate == nil {
-            status = .syncing
+            setStatus(.syncing)
             return
         }
         if event.succeeded {
@@ -532,7 +542,7 @@ final class CloudSyncMonitor {
             @unknown default:
                 break
             }
-            status = .ready
+            setStatus(.ready)
         } else {
             switch event.type {
             case .setup:  setupFailureCount += 1
@@ -540,10 +550,50 @@ final class CloudSyncMonitor {
             case .export: exportFailureCount += 1
             @unknown default: break
             }
-            status = .failed(message: humanReadable(event.error))
+            setStatus(.failed(message: humanReadable(event.error)))
             lastErrorDiagnostics = diagnosticsDump(event.error)
             Self.logger.error("CloudKit sync failed: \(self.humanReadable(event.error), privacy: .public)")
         }
+    }
+
+    /// Centralised status mutation so the stall-detection task is always
+    /// armed/disarmed in lockstep with the underlying state.
+    private func setStatus(_ new: Status) {
+        let wasSyncing = isSyncing(status)
+        status = new
+        let isSyncingNow = isSyncing(new)
+        if isSyncingNow && !wasSyncing {
+            startStuckSyncWatch()
+        } else if !isSyncingNow {
+            clearStuckSyncWatch()
+        }
+    }
+
+    private func isSyncing(_ s: Status) -> Bool {
+        if case .syncing = s { return true }
+        return false
+    }
+
+    private func startStuckSyncWatch() {
+        stuckSyncTask?.cancel()
+        stuckSyncing = false
+        stuckSyncTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Int(self?.stuckSyncThreshold ?? 60)))
+            guard let self else { return }
+            if Task.isCancelled { return }
+            // Still syncing after the threshold AND no terminal event has fired
+            // since we started watching — call it stuck.
+            if case .syncing = self.status {
+                self.stuckSyncing = true
+                Self.logger.error("CloudKit sync stuck for >\(Int(self.stuckSyncThreshold), privacy: .public)s with no terminal event")
+            }
+        }
+    }
+
+    private func clearStuckSyncWatch() {
+        stuckSyncTask?.cancel()
+        stuckSyncTask = nil
+        if stuckSyncing { stuckSyncing = false }
     }
 
     private func record(event: NSPersistentCloudKitContainer.Event) {
