@@ -197,7 +197,7 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 MaintenanceService.shared.runIfDue(context: context)
-                CalendarEventsService.shared.refreshIfDue()
+                CalendarEventsService.shared.refreshAuthStatus()
                 ShareOutbox.drain(into: context)
             } else {
                 unlockSession.lockAll()

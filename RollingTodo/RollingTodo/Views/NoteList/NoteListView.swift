@@ -461,15 +461,10 @@ struct FilteredNoteListView: View {
                 symbol: "magnifyingglass"
             )
         } else {
-            #if os(iOS)
             emptyScopeState
-            #else
-            EmptyView()
-            #endif
         }
     }
 
-    #if os(iOS)
     @ViewBuilder
     private var emptyScopeState: some View {
         let copy = emptyScopeCopy
@@ -503,7 +498,6 @@ struct FilteredNoteListView: View {
             return ("Snoozed", "Nothing tucked away", "Snoozed notes will appear here.")
         }
     }
-    #endif
 
     private var focusBanner: some View {
         HStack(spacing: 10) {

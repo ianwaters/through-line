@@ -32,6 +32,7 @@ struct EventsTodaySection: View {
             EventDetailSheet(eventID: wrapped.id)
         }
         #endif
+        .onAppear { service.refreshAuthStatus() }
     }
 
     private var header: some View {

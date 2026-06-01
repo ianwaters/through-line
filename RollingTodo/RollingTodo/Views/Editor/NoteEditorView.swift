@@ -184,34 +184,43 @@ private struct NoteEditorContent: View {
                 .fill(Color.inkHairline)
                 .frame(height: 0.5)
 
-            // .edit and .preview modes share a single outer ScrollView so the
-            // todo list sizes to its content and pushes the body down inside
-            // one scrollable column. .split keeps two independently scrolling
-            // panes (each side has its own ScrollView), so wrapping it in an
-            // outer ScrollView would create nested-scroll conflicts.
+            // .preview wraps the whole column in one ScrollView so the todo
+            // list and rendered markdown share a single scroll axis. .edit and
+            // .split each let their body editor scroll itself (TextEditor has
+            // its own scroller — nesting it in an outer ScrollView produces
+            // gesture conflicts and breaks newline-on-Return on macOS).
             switch mode {
             case .edit:
-                ScrollView {
-                    VStack(spacing: 0) {
-                        if note.todoEnabled {
-                            TodoListSection(note: note)
-                            Rectangle()
-                                .fill(Color.inkHairline)
-                                .frame(height: 0.5)
-                        }
-                        // TextField axis:.vertical sizes to its content (no
-                        // inner scroll), so the body grows to fit and the
-                        // outer ScrollView handles scrolling for the whole
-                        // editor.
-                        TextField("Start writing…", text: $note.bodyMarkdown, axis: .vertical)
-                            .textFieldStyle(.plain)
+                if note.todoEnabled {
+                    TodoListSection(note: note)
+                    Rectangle()
+                        .fill(Color.inkHairline)
+                        .frame(height: 0.5)
+                }
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $note.bodyMarkdown)
+                        .font(.system(size: 15, design: .serif))
+                        .lineSpacing(4)
+                        .scrollContentBackground(.hidden)
+                    if note.bodyMarkdown.isEmpty {
+                        // Offsets that align the placeholder with the
+                        // TextEditor's first caret position. NSTextView /
+                        // UITextView default to lineFragmentPadding = 5 on
+                        // both platforms; UITextView additionally defaults
+                        // to textContainerInset.top = 8 (NSTextView is 0),
+                        // so iOS needs the extra vertical nudge.
+                        Text("Start writing…")
                             .font(.system(size: 15, design: .serif))
-                            .lineSpacing(4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
+                            .foregroundStyle(Color.inkMuted)
+                            .padding(.leading, 5)
+                            #if os(iOS)
+                            .padding(.top, 8)
+                            #endif
+                            .allowsHitTesting(false)
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
             case .preview:
                 ScrollView {
                     VStack(spacing: 0) {

@@ -52,19 +52,28 @@ final class IntelligenceService {
     }
 
     private init() {
-        // Defer the availability read to a Task — `SystemLanguageModel.default`
-        // can block on first access while the FoundationModels service
-        // registers the app's entitlement, and the singleton is constructed
-        // on the main actor during view init. A long block here is one of
-        // the candidates for a launch watchdog termination on TestFlight
-        // builds.
-        Task { @MainActor [weak self] in
-            self?.refreshAvailability()
+        // Read availability off the main actor — `SystemLanguageModel.default`
+        // can synchronously block on first access while the FoundationModels
+        // service registers the app's entitlement (observed on iOS TestFlight
+        // builds; long enough to risk the launch watchdog). Doing this on a
+        // detached utility-priority task keeps the main thread free during
+        // launch; the cached result is published back via `MainActor.run`.
+        Task.detached(priority: .utility) { [weak self] in
+            let value = SystemLanguageModel.default.availability
+            await MainActor.run { [weak self] in
+                self?.availability = value
+            }
         }
     }
 
-    func refreshAvailability() {
-        availability = SystemLanguageModel.default.availability
+    /// Re-reads availability from FoundationModels. Always runs the
+    /// (synchronous) property read on a detached task — even post-launch
+    /// re-checks have been seen to block briefly on the main actor.
+    func refreshAvailability() async {
+        let value = await Task.detached(priority: .utility) {
+            SystemLanguageModel.default.availability
+        }.value
+        availability = value
     }
 
     /// Re-checks availability and drives the Settings button feedback. The
@@ -77,7 +86,7 @@ final class IntelligenceService {
         recheckPhase = .checking
         let startedAt = Date()
 
-        availability = SystemLanguageModel.default.availability
+        await refreshAvailability()
 
         let elapsed = Date().timeIntervalSince(startedAt)
         let minSpinnerDuration: TimeInterval = 0.25

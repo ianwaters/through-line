@@ -46,6 +46,14 @@ final class CalendarEventsService {
         refresh()
     }
 
+    /// Re-read TCC status from the OS. Catches grants/revokes made outside
+    /// the app (System Settings → Privacy → Calendars), so the in-app UI
+    /// doesn't sit on the cached state captured at singleton init.
+    func refreshAuthStatus() {
+        authStatus = EKEventStore.authorizationStatus(for: .event)
+        if isAuthorizedToRead { refresh() }
+    }
+
     func requestAccess() async -> Bool {
         do {
             let granted = try await store.requestFullAccessToEvents()

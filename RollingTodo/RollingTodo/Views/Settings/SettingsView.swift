@@ -124,6 +124,7 @@ struct SettingsView: View {
                 exportError = err.localizedDescription
             }
         }
+        .onAppear { calendarService.refreshAuthStatus() }
     }
 
     @ViewBuilder
